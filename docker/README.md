@@ -28,6 +28,26 @@ Docker running example
 
   `$ docker compose run run`
 
+Portainer Stack (NF split)
+===========================================
+* Ready-to-use stack file with separate services (`mme`, `smf`, `sgwc`, `sgwu`, `hss`, `pcrf`, `upf`, `webui`, `mongodb`):
+
+  `docker/portainer-stack.yml`
+
+* Build required images first:
+
+  ```
+  $ cd docker
+  $ export USER=open5gs
+  $ export DIST=ubuntu
+  $ export TAG=latest
+  $ docker compose build --no-cache base build webui
+  ```
+
+* Suggested tags used by the Portainer stack:
+  * `open5gs/ubuntu-latest-open5gs-build:latest`
+  * `open5gs/open5gs-webui:latest`
+
 For OpenSUSE Build Service Release
 ===========================================
 

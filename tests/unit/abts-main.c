@@ -25,6 +25,7 @@ extern int __ogs_ngap_domain;
 extern int __ogs_nas_domain;
 extern int __ogs_gtp_domain;
 extern int __ogs_sbi_domain;
+extern int __mme_log_domain;
 
 void ogs_sbi_message_init(int num_of_request_pool, int num_of_response_pool);
 void ogs_sbi_message_final(void);
@@ -37,6 +38,7 @@ abts_suite *test_ngap_message(abts_suite *suite);
 abts_suite *test_sbi_message(abts_suite *suite);
 abts_suite *test_security(abts_suite *suite);
 abts_suite *test_crash(abts_suite *suite);
+abts_suite *test_mme_s13_handler(abts_suite *suite);
 
 const struct testlist {
     abts_suite *(*func)(abts_suite *suite);
@@ -49,6 +51,7 @@ const struct testlist {
     {test_sbi_message},
     {test_security},
     {test_crash},
+    {test_mme_s13_handler},
     {NULL},
 };
 
@@ -107,6 +110,7 @@ int main(int argc, const char *const argv[])
     ogs_log_install_domain(&__ogs_nas_domain, "nas", OGS_LOG_ERROR);
     ogs_log_install_domain(&__ogs_gtp_domain, "gtp", OGS_LOG_ERROR);
     ogs_log_install_domain(&__ogs_sbi_domain, "sbi", OGS_LOG_ERROR);
+    ogs_log_install_domain(&__mme_log_domain, "mme", OGS_LOG_ERROR);
 
     atexit(terminate);
 

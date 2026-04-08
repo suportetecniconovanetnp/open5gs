@@ -241,6 +241,8 @@ ogs_pkbuf_t *mme_s11_build_create_session_request(
 
     if (sess->ue_request_type.value == OGS_NAS_EPS_REQUEST_TYPE_HANDOVER)
         indication.handover_indication = 1;
+    else if (sess->ue_request_type.value == OGS_NAS_EPS_REQUEST_TYPE_EMERGENCY)
+        indication.emergency_pdu_session_indication = 1;
 
     if (create_action == OGS_GTP_CREATE_IN_PATH_SWITCH_REQUEST ||
         create_action == OGS_GTP_CREATE_IN_TRACKING_AREA_UPDATE)
@@ -453,6 +455,13 @@ ogs_pkbuf_t *mme_s11_build_modify_bearer_request(
 
         if (sess->ue_request_type.value == OGS_NAS_EPS_REQUEST_TYPE_HANDOVER) {
             indication.handover_indication = 1;
+            req->indication_flags.presence = 1;
+            req->indication_flags.data = &indication;
+            req->indication_flags.len = sizeof(ogs_gtp2_indication_t);
+            break;
+        } else if (sess->ue_request_type.value ==
+                OGS_NAS_EPS_REQUEST_TYPE_EMERGENCY) {
+            indication.emergency_pdu_session_indication = 1;
             req->indication_flags.presence = 1;
             req->indication_flags.data = &indication;
             req->indication_flags.len = sizeof(ogs_gtp2_indication_t);

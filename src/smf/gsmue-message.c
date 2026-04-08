@@ -1590,8 +1590,9 @@ ogs_pkbuf_t *gsmue_build_pdu_session_establishment_accept(smf_sess_t *sess)
     if (sess->nas.ue_epco.buffer && sess->nas.ue_epco.length) {
         epco_buf = ogs_calloc(OGS_MAX_EPCO_LEN, sizeof(uint8_t));
         ogs_assert(epco_buf);
-        epco_len = smf_pco_build(epco_buf,
-                sess->nas.ue_epco.buffer, sess->nas.ue_epco.length);
+            epco_len = smf_pco_build(epco_buf,
+                    sess->nas.ue_epco.buffer, sess->nas.ue_epco.length,
+                    sess->session.name);
         ogs_assert(epco_len > 0);
         pdu_session_establishment_accept->presencemask |=
             OGS_NAS_5GS_PDU_SESSION_ESTABLISHMENT_ACCEPT_EXTENDED_PROTOCOL_CONFIGURATION_OPTIONS_PRESENT;

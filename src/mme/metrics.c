@@ -50,6 +50,11 @@ ogs_metrics_spec_t *mme_metrics_spec_global[_MME_METR_GLOB_MAX];
 ogs_metrics_inst_t *mme_metrics_inst_global[_MME_METR_GLOB_MAX];
 mme_metrics_spec_def_t mme_metrics_spec_def_global[_MME_METR_GLOB_MAX] = {
 /* Global Gauges: */
+[MME_METR_GLOB_GAUGE_EMERGENCY_BEARERS] = {
+    .type = OGS_METRICS_METRIC_TYPE_GAUGE,
+    .name = "emergency_bearers",
+    .description = "Number of emergency bearers connected",
+},
 [MME_METR_GLOB_GAUGE_ENB_UE] = {
     .type = OGS_METRICS_METRIC_TYPE_GAUGE,
     .name = "enb_ue",

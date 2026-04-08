@@ -135,6 +135,7 @@ typedef struct smf_context_s {
     char            *p_cscf6[MAX_NUM_OF_P_CSCF];
     int             num_of_p_cscf6;
     int             p_cscf6_index;
+    const char      *emergency_p_cscf_ipv4;
 
     ogs_list_t      sgw_s5c_list;   /* SGW GTPC Node List */
     ogs_list_t      ip_pool_list;
@@ -807,7 +808,8 @@ smf_pf_t *smf_pf_find_by_flow(
 smf_pf_t *smf_pf_first(smf_bearer_t *bearer);
 smf_pf_t *smf_pf_next(smf_pf_t *pf);
 
-int smf_pco_build(uint8_t *pco_buf, uint8_t *buffer, int length);
+int smf_pco_build(
+        uint8_t *pco_buf, uint8_t *buffer, int length, const char *apn);
 
 void smf_qfi_pool_init(smf_sess_t *sess);
 void smf_qfi_pool_final(smf_sess_t *sess);

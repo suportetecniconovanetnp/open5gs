@@ -24,6 +24,7 @@
 
 #include "ogs-s1ap.h"
 #include "ogs-diameter-s6a.h"
+#include "ogs-diameter-s13.h"
 #include "ogs-gtp.h"
 #include "ogs-nas-eps.h"
 #include "ogs-app.h"
@@ -74,6 +75,21 @@ typedef struct served_gummei_s {
     int             num_of_mme_code;
     uint8_t         mme_code[CODE_PER_MME];
 } served_gummei_t;
+
+enum {
+    BYTES_IN_EMERGENCY_NUMBER_LIST_ITEM = 4,
+    MAX_NUM_EMERGENCY_NUMBER_LIST_ITEMS =
+        OGS_NAS_MAX_EMERGENCY_NUMBER_LIST_LEN /
+        BYTES_IN_EMERGENCY_NUMBER_LIST_ITEM,
+};
+typedef struct {
+    bool service_mountain_rescue;
+    bool service_marine_guard;
+    bool service_fire_brigade;
+    bool service_ambulance;
+    bool service_police;
+    uint16_t bcd_decimal;
+} emergency_number_list_item_t;
 
 typedef struct mme_context_s {
     const char          *diam_conf_path;  /* MME Diameter conf path */
@@ -169,6 +185,14 @@ typedef struct mme_context_s {
     struct {
         const char *dnn;            /* Emergency APN */
     } emergency;
+
+    /* Control EIR functionality */
+    ogs_nas_eir_t eir;
+    bool emergency_bearer_services;
+    size_t num_emergency_number_list_items;
+    emergency_number_list_item_t
+        emergency_number_list[MAX_NUM_EMERGENCY_NUMBER_LIST_ITEMS];
+    int default_emergency_session_type;
 } mme_context_t;
 
 typedef struct mme_sgsn_route_s {
@@ -1242,6 +1266,7 @@ mme_bearer_t *mme_bearer_find_by_id(ogs_pool_id_t id);
 void mme_session_remove_all(mme_ue_t *mme_ue);
 ogs_session_t *mme_session_find_by_apn(mme_ue_t *mme_ue, const char *apn);
 ogs_session_t *mme_default_session(mme_ue_t *mme_ue);
+ogs_session_t *mme_emergency_session(mme_ue_t *mme_ue);
 
 int mme_find_served_tai(ogs_eps_tai_t *tai);
 

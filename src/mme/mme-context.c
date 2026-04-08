@@ -2535,6 +2535,139 @@ int mme_context_parse_config(void)
                     }
                 } else if (!strcmp(mme_key, "metrics")) {
                     /* handle config in metrics library */
+                } else if (!strcmp(mme_key, "eir")) {
+                    ogs_yaml_iter_t eir_iter;
+                    ogs_yaml_iter_recurse(&mme_iter, &eir_iter);
+                    while (ogs_yaml_iter_next(&eir_iter)) {
+                        const char *eir_key = ogs_yaml_iter_key(&eir_iter);
+                        ogs_assert(eir_key);
+                        if (!strcmp(eir_key, "enabled")) {
+                            ogs_nas_eir_t *eir = &self.eir;
+                            const char *c_eir_enabled =
+                                ogs_yaml_iter_value(&eir_iter);
+                            if (c_eir_enabled &&
+                                (!strcmp("True", c_eir_enabled) ||
+                                 !strcmp("true", c_eir_enabled))) {
+                                eir->enabled = true;
+                            } else {
+                                eir->enabled = false;
+                            }
+                        } else if (!strcmp(eir_key, "allowed_states")) {
+                            ogs_yaml_iter_t allowed_state_array;
+                            ogs_yaml_iter_recurse(
+                                &eir_iter, &allowed_state_array);
+                            do {
+                                const char *allowed_state = NULL;
+                                if (ogs_yaml_iter_type(&allowed_state_array) ==
+                                        YAML_SEQUENCE_NODE) {
+                                    if (!ogs_yaml_iter_next(&allowed_state_array))
+                                        break;
+                                }
+                                allowed_state =
+                                    ogs_yaml_iter_value(&allowed_state_array);
+                                if (allowed_state) {
+                                    if (!strcmp("whitelist", allowed_state))
+                                        self.eir.allow_whitelist = true;
+                                    else if (!strcmp("greylist", allowed_state))
+                                        self.eir.allow_greylist = true;
+                                    else if (!strcmp("blacklist", allowed_state))
+                                        self.eir.allow_blacklist = true;
+                                }
+                            } while (ogs_yaml_iter_type(&allowed_state_array) ==
+                                    YAML_SEQUENCE_NODE);
+                        }
+                    }
+                } else if (!strcmp(mme_key, "emergency_number_list")) {
+                    ogs_yaml_iter_t emergency_number_array;
+                    int num_emergency_number_list_items = 0;
+                    ogs_yaml_iter_recurse(
+                        &mme_iter, &emergency_number_array);
+                    do {
+                        ogs_yaml_iter_t emergency_number_iter;
+                        emergency_number_list_item_t *emergency_number = NULL;
+                        const char *bcd_decimal = NULL;
+
+                        if (ogs_yaml_iter_type(&emergency_number_array) ==
+                                YAML_MAPPING_NODE) {
+                            memcpy(&emergency_number_iter, &emergency_number_array,
+                                    sizeof(ogs_yaml_iter_t));
+                        } else if (ogs_yaml_iter_type(&emergency_number_array) ==
+                                YAML_SEQUENCE_NODE) {
+                            if (!ogs_yaml_iter_next(&emergency_number_array))
+                                break;
+                            ogs_yaml_iter_recurse(
+                                &emergency_number_array, &emergency_number_iter);
+                        } else if (ogs_yaml_iter_type(&emergency_number_array) ==
+                                YAML_SCALAR_NODE) {
+                            break;
+                        } else {
+                            ogs_assert_if_reached();
+                        }
+
+                        if (num_emergency_number_list_items >=
+                                MAX_NUM_EMERGENCY_NUMBER_LIST_ITEMS)
+                            break;
+                        emergency_number =
+                            &self.emergency_number_list[num_emergency_number_list_items];
+
+                        while (ogs_yaml_iter_next(&emergency_number_iter)) {
+                            const char *emergency_number_key =
+                                ogs_yaml_iter_key(&emergency_number_iter);
+                            ogs_assert(emergency_number_key);
+                            if (!strcmp(emergency_number_key, "services")) {
+                                ogs_yaml_iter_t service_array;
+                                ogs_yaml_iter_recurse(
+                                    &emergency_number_iter, &service_array);
+                                do {
+                                    const char *service = NULL;
+                                    if (ogs_yaml_iter_type(&service_array) ==
+                                            YAML_SEQUENCE_NODE) {
+                                        if (!ogs_yaml_iter_next(&service_array))
+                                            break;
+                                    }
+                                    service = ogs_yaml_iter_value(&service_array);
+                                    if (service) {
+                                        if (!strcmp("mountain", service))
+                                            emergency_number->service_mountain_rescue = true;
+                                        else if (!strcmp("marine", service))
+                                            emergency_number->service_marine_guard = true;
+                                        else if (!strcmp("fire", service))
+                                            emergency_number->service_fire_brigade = true;
+                                        else if (!strcmp("ambulance", service))
+                                            emergency_number->service_ambulance = true;
+                                        else if (!strcmp("police", service))
+                                            emergency_number->service_police = true;
+                                    }
+                                } while (ogs_yaml_iter_type(&service_array) ==
+                                        YAML_SEQUENCE_NODE);
+                            } else if (!strcmp(emergency_number_key, "number")) {
+                                bcd_decimal =
+                                    ogs_yaml_iter_value(&emergency_number_iter);
+                            }
+                        }
+                        if (bcd_decimal) {
+                            emergency_number->bcd_decimal = atoi(bcd_decimal);
+                            ++num_emergency_number_list_items;
+                        }
+                    } while (ogs_yaml_iter_type(&emergency_number_array) ==
+                            YAML_SEQUENCE_NODE);
+                    self.num_emergency_number_list_items =
+                        num_emergency_number_list_items;
+                } else if (!strcmp(mme_key, "emergency_bearer_services")) {
+                    const char *c_emergency_bearer_services =
+                        ogs_yaml_iter_value(&mme_iter);
+                    if (c_emergency_bearer_services &&
+                        (!strcmp("True", c_emergency_bearer_services) ||
+                         !strcmp("true", c_emergency_bearer_services)))
+                        self.emergency_bearer_services = true;
+                    else
+                        self.emergency_bearer_services = false;
+                } else if (!strcmp(mme_key, "default_emergency_session_type")) {
+                    const char *c_default_emergency_session_type =
+                        ogs_yaml_iter_value(&mme_iter);
+                    if (c_default_emergency_session_type)
+                        self.default_emergency_session_type =
+                            atoi(c_default_emergency_session_type);
                 } else if (!strcmp(mme_key, "emergency")) {
                     ogs_yaml_iter_t emerg_iter;
                     ogs_yaml_iter_recurse(&mme_iter, &emerg_iter);
@@ -4470,6 +4603,11 @@ void mme_sess_remove(mme_sess_t *sess)
 
     ogs_list_remove(&mme_ue->sess_list, sess);
 
+    if (sess->session && sess->session->name &&
+            !strcmp(sess->session->name, "sos")) {
+        mme_metrics_inst_global_dec(MME_METR_GLOB_GAUGE_EMERGENCY_BEARERS);
+    }
+
     mme_bearer_remove_all(sess);
 
     OGS_NAS_CLEAR_DATA(&sess->ue_pco);
@@ -4825,8 +4963,15 @@ mme_bearer_t *mme_bearer_find_or_add_by_message(
     if (message->esm.h.message_type == OGS_NAS_EPS_PDN_CONNECTIVITY_REQUEST) {
         ogs_nas_eps_pdn_connectivity_request_t *pdn_connectivity_request =
             &message->esm.pdn_connectivity_request;
-        if (pdn_connectivity_request->presencemask &
-            OGS_NAS_EPS_PDN_CONNECTIVITY_REQUEST_ACCESS_POINT_NAME_PRESENT) {
+        if (OGS_NAS_EPS_REQUEST_TYPE_EMERGENCY ==
+                pdn_connectivity_request->request_type.value) {
+            char sos[] = "sos";
+            sess = mme_sess_find_by_apn(mme_ue, sos);
+            if (sess && create_action != OGS_GTP_CREATE_IN_ATTACH_REQUEST) {
+                ogs_warn("APN duplication detected [%s]", sos);
+            }
+        } else if (pdn_connectivity_request->presencemask &
+                OGS_NAS_EPS_PDN_CONNECTIVITY_REQUEST_ACCESS_POINT_NAME_PRESENT) {
             sess = mme_sess_find_by_apn(mme_ue,
                     pdn_connectivity_request->access_point_name.apn);
             if (sess && create_action != OGS_GTP_CREATE_IN_ATTACH_REQUEST) {
@@ -4972,6 +5117,23 @@ ogs_session_t *mme_session_find_by_apn(mme_ue_t *mme_ue, const char *apn)
         session = &mme_ue->session[i];
         ogs_assert(session->name);
         if (ogs_strcasecmp(session->name, apn) == 0)
+            return session;
+    }
+
+    return NULL;
+}
+
+ogs_session_t *mme_emergency_session(mme_ue_t *mme_ue)
+{
+    ogs_session_t *session = NULL;
+    int i = 0;
+
+    ogs_assert(mme_ue);
+
+    ogs_assert(mme_ue->num_of_session <= OGS_MAX_NUM_OF_SESS);
+    for (i = 0; i < mme_ue->num_of_session; i++) {
+        session = &mme_ue->session[i];
+        if (session->name && strstr(session->name, "sos"))
             return session;
     }
 

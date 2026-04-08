@@ -112,12 +112,14 @@ int esm_handle_pdn_connectivity_request(
         emergency) {
         const char *apn;
         if (emergency) {
-            apn = emergency_dnn;
+            sess->session = mme_emergency_session(mme_ue);
+            apn = emergency_dnn ? emergency_dnn : "sos";
             sess->ue_request_type.value = 1;
         } else {
             apn = req->access_point_name.apn;
         }
-        sess->session = mme_session_find_by_apn(mme_ue, apn);
+        if (!sess->session)
+            sess->session = mme_session_find_by_apn(mme_ue, apn);
         if (!sess->session) {
             /* Invalid APN */
             r = nas_eps_send_pdn_connectivity_reject(
@@ -127,6 +129,11 @@ int esm_handle_pdn_connectivity_request(
             ogs_assert(r != OGS_ERROR);
             ogs_warn("Invalid APN[%s]", apn);
             return OGS_ERROR;
+        }
+
+        if (sess->session && sess->session->name &&
+                !strcmp("sos", sess->session->name)) {
+            mme_metrics_inst_global_inc(MME_METR_GLOB_GAUGE_EMERGENCY_BEARERS);
         }
 
         if (sess->session->session_type == OGS_PDU_SESSION_TYPE_IPV4 ||

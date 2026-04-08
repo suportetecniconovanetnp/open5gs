@@ -1006,6 +1006,8 @@ int smf_context_parse_config(void)
                     /* handle config in sbi library */
                 } else if (!strcmp(smf_key, "metrics")) {
                     /* handle config in metrics library */
+                } else if (!strcmp(smf_key, "emergency_p_cscf_ipv4")) {
+                    self.emergency_p_cscf_ipv4 = ogs_yaml_iter_value(&smf_iter);
                 } else
                     ogs_warn("unknown key `%s`", smf_key);
             }
@@ -3097,7 +3099,8 @@ static const uint8_t *ipcp_contains_option(
 #include "../version.h"
 static const char *pap_welcome = "Welcome to open5gs-smfd " OPEN5GS_VERSION;
 
-int smf_pco_build(uint8_t *pco_buf, uint8_t *buffer, int length)
+int smf_pco_build(
+        uint8_t *pco_buf, uint8_t *buffer, int length, const char *apn)
 {
     int rv;
     ogs_pco_t ue, smf;
@@ -3280,7 +3283,21 @@ int smf_pco_build(uint8_t *pco_buf, uint8_t *buffer, int length)
             }
             break;
         case OGS_PCO_ID_P_CSCF_IPV4_ADDRESS_REQUEST:
-            if (smf_self()->num_of_p_cscf) {
+            if (apn && !ogs_strcasecmp(apn, "sos") &&
+                    smf_self()->emergency_p_cscf_ipv4) {
+                uint32_t emergency_p_cscf_addr[4] = { 0 };
+
+                if (OGS_OK == ogs_ipv4_from_string(emergency_p_cscf_addr,
+                            (char *)smf_self()->emergency_p_cscf_ipv4)) {
+                    smf.ids[smf.num_of_id].id = ue.ids[i].id;
+                    smf.ids[smf.num_of_id].len = OGS_IPV4_LEN;
+                    smf.ids[smf.num_of_id].data = emergency_p_cscf_addr;
+                    smf.num_of_id++;
+                } else {
+                    ogs_error("Failed to parse emergency P-CSCF IPv4 [%s]",
+                            smf_self()->emergency_p_cscf_ipv4);
+                }
+            } else if (smf_self()->num_of_p_cscf) {
                 rv = ogs_ipsubnet(&p_cscf,
                     smf_self()->p_cscf[smf_self()->p_cscf_index], NULL);
                 ogs_assert(rv == OGS_OK);

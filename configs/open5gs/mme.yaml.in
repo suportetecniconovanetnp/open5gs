@@ -43,6 +43,14 @@ mme:
     full: Open5GS
     short: Next
   mme_name: open5gs-mme0
+  # eir:
+  #   enabled: false
+  #   allowed_states: [whitelist, greylist, blacklist]
+  # emergency_bearer_services: true
+  # emergency_number_list:
+  #   - services: [mountain, marine, fire, ambulance, police]
+  #     number: 112
+  # default_emergency_session_type: 1
   time:
 #    t3402:
 #      value: 720   # 12 minutes * 60 = 720 seconds

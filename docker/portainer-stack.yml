@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: open5gs-mongodb
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - mongodb:/data/db
+
+  webui:
+    image: open5gs/open5gs-webui:latest
+    container_name: open5gs-webui
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DB_URI: mongodb://127.0.0.1/open5gs
+    depends_on:
+      - mongodb
+
+  mme:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-mme
+    network_mode: host
+    restart: unless-stopped
+    command: ["/open5gs/build/src/mme/open5gs-mmed", "-c", "/open5gs/build/configs/open5gs/mme.yaml"]
+    depends_on:
+      - mongodb
+      - hss
+      - sgwc
+
+  hss:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-hss
+    network_mode: host
+    restart: unless-stopped
+    command: ["/open5gs/build/src/hss/open5gs-hssd", "-c", "/open5gs/build/configs/open5gs/hss.yaml"]
+    depends_on:
+      - mongodb
+
+  pcrf:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-pcrf
+    network_mode: host
+    restart: unless-stopped
+    command: ["/open5gs/build/src/pcrf/open5gs-pcrfd", "-c", "/open5gs/build/configs/open5gs/pcrf.yaml"]
+    depends_on:
+      - mongodb
+
+  sgwc:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-sgwc
+    network_mode: host
+    restart: unless-stopped
+    command: ["/open5gs/build/src/sgwc/open5gs-sgwcd", "-c", "/open5gs/build/configs/open5gs/sgwc.yaml"]
+    depends_on:
+      - mongodb
+
+  sgwu:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-sgwu
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    command:
+      - /bin/bash
+      - -lc
+      - /root/setup.sh; exec /open5gs/build/src/sgwu/open5gs-sgwud -c /open5gs/build/configs/open5gs/sgwu.yaml
+    depends_on:
+      - sgwc
+
+  smf:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-smf
+    network_mode: host
+    restart: unless-stopped
+    command: ["/open5gs/build/src/smf/open5gs-smfd", "-c", "/open5gs/build/configs/open5gs/smf.yaml"]
+    depends_on:
+      - mongodb
+      - pcrf
+      - upf
+
+  upf:
+    image: open5gs/ubuntu-latest-open5gs-build:latest
+    container_name: open5gs-upf
+    network_mode: host
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    command:
+      - /bin/bash
+      - -lc
+      - /root/setup.sh; exec /open5gs/build/src/upf/open5gs-upfd -c /open5gs/build/configs/open5gs/upf.yaml
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb:

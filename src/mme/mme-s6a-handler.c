@@ -109,6 +109,30 @@ uint8_t mme_s6a_handle_ula(
 
     mme_ue->context_identifier = slice_data->context_identifier;
 
+    if ((NULL == mme_emergency_session(mme_ue)) &&
+            (0 != mme_self()->default_emergency_session_type)) {
+        ogs_session_t *session = NULL;
+        int i;
+
+        ogs_info("No sos session was present for UE, adding our default now...");
+        for (i = 0; i < OGS_MAX_NUM_OF_SESS; i++) {
+            if (mme_ue->session[i].name == NULL) {
+                session = &mme_ue->session[i];
+                session->name = ogs_strdup("sos");
+                ogs_assert(session->name);
+                session->session_type =
+                    mme_self()->default_emergency_session_type;
+                mme_ue->num_of_session++;
+                break;
+            }
+        }
+
+        if (!session) {
+            ogs_error("Cannot add sos session to mme_ue, not enough session slots... rejecting UE...");
+            return OGS_NAS_EMM_CAUSE_NETWORK_FAILURE;
+        }
+    }
+
     if (mme_ue->nas_eps.type == MME_EPS_TYPE_ATTACH_REQUEST) {
         rv = nas_eps_send_emm_to_esm(mme_ue,
                 &mme_ue->pdn_connectivity_request);

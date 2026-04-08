@@ -24,6 +24,60 @@
 #undef OGS_LOG_DOMAIN
 #define OGS_LOG_DOMAIN __emm_log_domain
 
+static uint16_t u16_to_packed_bcd(uint16_t number)
+{
+    uint16_t packed_bcd = 0;
+    int shift = 0;
+
+    while (number > 0 && shift < 16) {
+        packed_bcd |= (number % 10) << shift;
+        number /= 10;
+        shift += 4;
+    }
+
+    return packed_bcd;
+}
+
+static ogs_nas_emergency_number_list_t parse_emergency_number_items_to_list(
+    emergency_number_list_item_t const * const emergency_number_list_items,
+    int num_emergency_number_list_items)
+{
+    enum {
+        DEFAULT_EMERGENCY_NUMBER_INFO_LENGTH = 3,
+        SERVICE_MOUNTAIN_RESCUE_BIT = 0,
+        SERVICE_MARINE_GUARD_BIT = 1,
+        SERVICE_FIRE_BRIGADE_BIT = 2,
+        SERVICE_AMBULANCE_BIT = 3,
+        SERVICE_POLICE_BIT = 4,
+    };
+
+    ogs_nas_emergency_number_list_t result = {0};
+    int bytesEncoded = 0;
+    int i;
+
+    result.length = num_emergency_number_list_items *
+        BYTES_IN_EMERGENCY_NUMBER_LIST_ITEM;
+
+    for (i = 0; i < num_emergency_number_list_items; ++i) {
+        emergency_number_list_item_t emergency_number =
+            emergency_number_list_items[i];
+        uint16_t encoded_bcd;
+
+        result.buffer[bytesEncoded++] = DEFAULT_EMERGENCY_NUMBER_INFO_LENGTH;
+        result.buffer[bytesEncoded++] = (uint8_t)(
+            (emergency_number.service_police << SERVICE_POLICE_BIT) |
+            (emergency_number.service_ambulance << SERVICE_AMBULANCE_BIT) |
+            (emergency_number.service_fire_brigade << SERVICE_FIRE_BRIGADE_BIT) |
+            (emergency_number.service_marine_guard << SERVICE_MARINE_GUARD_BIT) |
+            (emergency_number.service_mountain_rescue << SERVICE_MOUNTAIN_RESCUE_BIT));
+        encoded_bcd = u16_to_packed_bcd(emergency_number.bcd_decimal);
+        memcpy(&result.buffer[bytesEncoded], &encoded_bcd, sizeof(encoded_bcd));
+        bytesEncoded += sizeof(encoded_bcd);
+    }
+
+    return result;
+}
+
 ogs_pkbuf_t *emm_build_attach_accept(
         mme_ue_t *mme_ue, ogs_pkbuf_t *esmbuf)
 {
@@ -237,8 +291,18 @@ ogs_pkbuf_t *emm_build_attach_accept(
     }
     eps_network_feature_support->ims_voice_over_ps_session_in_s1_mode = 1;
     eps_network_feature_support->extended_protocol_configuration_options = 1;
-    if (mme_self()->emergency.dnn)
-        eps_network_feature_support->emergency_bearer_services_in_s1_mode = 1;
+    eps_network_feature_support->emergency_bearer_services_in_s1_mode =
+        mme_self()->emergency_bearer_services;
+
+    if (OGS_NAS_ATTACH_TYPE_EPS_EMERGENCY_ATTACH == mme_ue->nas_eps.attach.value &&
+            mme_self()->num_emergency_number_list_items > 0) {
+        attach_accept->presencemask |=
+            OGS_NAS_EPS_ATTACH_ACCEPT_EMERGENCY_NUMBER_LIST_PRESENT;
+        attach_accept->emergency_number_list =
+            parse_emergency_number_items_to_list(
+                mme_self()->emergency_number_list,
+                mme_self()->num_emergency_number_list_items);
+    }
 
     if (MME_NEXT_P_TMSI_IS_AVAILABLE(mme_ue)) {
         ogs_assert(mme_ue->csmap);
@@ -684,6 +748,9 @@ ogs_pkbuf_t *emm_build_tau_accept(mme_ue_t *mme_ue)
         ims_voice_over_ps_session_in_s1_mode = 1;
     tau_accept->eps_network_feature_support.
         extended_protocol_configuration_options = 1;
+    tau_accept->eps_network_feature_support.
+        emergency_bearer_services_in_s1_mode =
+            mme_self()->emergency_bearer_services;
 
     return nas_eps_security_encode(mme_ue, &message);
 }

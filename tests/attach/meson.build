@@ -27,6 +27,7 @@ testapp_attach_sources = files('''
     ue-context-test.c
     issues-test.c
     crash-test.c
+    eir-disabled-test.c
 '''.split())
 
 testapp_attach_exe = executable('attach',
@@ -35,3 +36,19 @@ testapp_attach_exe = executable('attach',
     dependencies : libtestepc_dep)
 
 test('attach', testapp_attach_exe, is_parallel : false, suite: 'epc')
+
+testapp_attach_eir_enabled_sources = files('''
+    abts-main-eir-enabled.c
+    eir-enabled-test.c
+    test-eir-fd-path.h
+    test-eir-fd-path.c
+'''.split())
+
+testapp_attach_eir_enabled_exe = executable('attach-eir-enabled',
+    sources : testapp_attach_eir_enabled_sources,
+    c_args : [testunit_core_cc_flags,
+        '-DFD_EXT_DIR="@0@"'.format(build_subprojects_freeDiameter_extensions_dir)],
+    dependencies : [libtestepc_dep, libdiameter_s13_dep])
+
+test('attach-eir-enabled', testapp_attach_eir_enabled_exe,
+    is_parallel : false, suite: 'epc')

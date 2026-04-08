@@ -9,6 +9,7 @@ extern "C" {
 
 /* GLOBAL */
 typedef enum mme_metric_type_global_s {
+    MME_METR_GLOB_GAUGE_EMERGENCY_BEARERS,
     MME_METR_GLOB_GAUGE_ENB_UE,
     MME_METR_GLOB_GAUGE_MME_SESS,
     MME_METR_GLOB_GAUGE_ENB,
