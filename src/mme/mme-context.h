@@ -179,7 +179,7 @@ typedef struct mme_context_s {
     struct {
         struct {
             ogs_time_t value;       /* Timer Value(Seconds) */
-        } t3402, t3412, t3423;
+        } t3402, t3396, t3412, t3423;
     } time;
 
     struct {
@@ -588,6 +588,10 @@ struct mme_ue_s {
 
     /* Security Context */
     ogs_nas_ue_network_capability_t ue_network_capability;
+
+    /* Transient Path Switch state */
+    bool send_ue_security_capability_in_path_switch_ack;
+
     ogs_nas_ms_network_capability_t ms_network_capability;
     ogs_nas_ue_additional_security_capability_t
         ue_additional_security_capability;

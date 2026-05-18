@@ -374,8 +374,12 @@ ogs_pkbuf_t *gsm_build_pdu_session_modification_command(
                             qos_rules.buffer, qosFlowAddModRequestItem->qos_rules);
                 ogs_assert(qos_rules.length);
 
-                ogs_assert(1 ==
-                        ogs_nas_parse_qos_rules(&qos_rule[num], &qos_rules));
+                if (1 != ogs_nas_parse_qos_rules(&qos_rule[num],
+                            &qos_rules)) {
+                    ogs_error("ogs_nas_parse_qos_rules() failed");
+                    ogs_free(qos_rules.buffer);
+                    goto cleanup;
+                }
 
                 ogs_free(qos_rules.buffer);
 
@@ -396,8 +400,11 @@ ogs_pkbuf_t *gsm_build_pdu_session_modification_command(
                             qos_rules.buffer, qosFlowRelRequestItem->qos_rules);
                 ogs_assert(qos_rules.length);
 
-                ogs_assert(1 ==
-                        ogs_nas_parse_qos_rules(&qos_rule[num], &qos_rules));
+                if (1 != ogs_nas_parse_qos_rules(&qos_rule[num], &qos_rules)) {
+                    ogs_error("ogs_nas_parse_qos_rules() failed");
+                    ogs_free(qos_rules.buffer);
+                    goto cleanup;
+                }
 
                 ogs_free(qos_rules.buffer);
 
@@ -462,10 +469,13 @@ ogs_pkbuf_t *gsm_build_pdu_session_modification_command(
                             qosFlowAddModRequestItem->qos_flow_description);
                 ogs_assert(qos_flow_descriptions.length);
 
-                ogs_assert(1 ==
-                        ogs_nas_parse_qos_flow_descriptions(
+                if (1 != ogs_nas_parse_qos_flow_descriptions(
                             &qos_flow_description[num],
-                            &qos_flow_descriptions));
+                            &qos_flow_descriptions)) {
+                    ogs_error("ogs_nas_parse_qos_flow_descriptions() failed");
+                    ogs_free(qos_flow_descriptions.buffer);
+                    goto cleanup;
+                }
 
                 ogs_free(qos_flow_descriptions.buffer);
 
@@ -490,10 +500,13 @@ ogs_pkbuf_t *gsm_build_pdu_session_modification_command(
                             qosFlowRelRequestItem->qos_flow_description);
                 ogs_assert(qos_flow_descriptions.length);
 
-                ogs_assert(1 ==
-                        ogs_nas_parse_qos_flow_descriptions(
+                if (1 != ogs_nas_parse_qos_flow_descriptions(
                             &qos_flow_description[num],
-                            &qos_flow_descriptions));
+                            &qos_flow_descriptions)) {
+                    ogs_error("ogs_nas_parse_qos_flow_descriptions() failed");
+                    ogs_free(qos_flow_descriptions.buffer);
+                    goto cleanup;
+                }
 
                 ogs_free(qos_flow_descriptions.buffer);
 

@@ -365,6 +365,129 @@ cleanup:
     return ueid;
 }
 
+bool ogs_id_get_type_value(const char *str, char **type, char **value)
+{
+    ogs_assert(str);
+    ogs_assert(type);
+    ogs_assert(value);
+
+    *type = ogs_id_get_type(str);
+    *value = ogs_id_get_value(str);
+
+    if (!*type || !*value || !strlen(*type) || !strlen(*value))
+        goto cleanup;
+
+    /* Reject extra '-' components that ogs_id_get_value() ignores. */
+    if (strlen(str) != strlen(*type) + 1 + strlen(*value))
+        goto cleanup;
+
+    return true;
+
+cleanup:
+    if (*type) {
+        ogs_free(*type);
+        *type = NULL;
+    }
+    if (*value) {
+        ogs_free(*value);
+        *value = NULL;
+    }
+
+    return false;
+}
+
+bool ogs_bcd_string_is_valid(const char *bcd, int max_len)
+{
+    int i, len;
+
+    ogs_assert(bcd);
+    ogs_assert(max_len > 0);
+
+    len = strlen(bcd);
+    if (len == 0 || len > max_len) {
+        ogs_error("Invalid BCD length [%d:%s]", len, bcd);
+        return false;
+    }
+
+    for (i = 0; i < len; i++) {
+        if (bcd[i] < '0' || bcd[i] > '9') {
+            ogs_error("Invalid BCD digit [%d:%c:%s]", i, bcd[i], bcd);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ogs_pdu_session_id_is_valid(int psi)
+{
+    return psi > OGS_NAS_PDU_SESSION_IDENTITY_UNASSIGNED &&
+           psi <= OGS_NAS_PDU_SESSION_IDENTITY_MAX;
+}
+
+/*
+ * ogs_bcd_to_buffer() only converts bytes. It does not validate that
+ * the input is a bounded decimal IMSI string, so check it first.
+ */
+bool ogs_imsi_bcd_is_valid(const char *imsi_bcd)
+{
+    return ogs_bcd_string_is_valid(imsi_bcd, OGS_MAX_IMSI_BCD_LEN);
+}
+
+bool ogs_imeisv_bcd_is_valid(const char *imeisv_bcd)
+{
+    return ogs_bcd_string_is_valid(imeisv_bcd, OGS_MAX_IMEISV_BCD_LEN);
+}
+
+/*
+ * Return the decimal IMSI string only for IMSI-type SUPI.  Other SUPI
+ * types cannot be used as EPC IMSI keys and remain SUPI-only.
+ *
+ * Return OGS_ERROR only when the SUPI claims to be IMSI-type but the
+ * IMSI payload is malformed.  That must not fall back to SUPI-only.
+ */
+int ogs_supi_to_imsi_bcd(
+        const char *supi, char *imsi_bcd, bool *imsi_supi)
+{
+    int rv = OGS_ERROR;
+    char *type = NULL;
+    char *value = NULL;
+
+    ogs_assert(supi);
+    ogs_assert(imsi_bcd);
+    ogs_assert(imsi_supi);
+
+    *imsi_supi = false;
+
+    if (ogs_id_get_type_value(supi, &type, &value) == false) {
+        ogs_error("Invalid SUPI [%s]", supi);
+        goto cleanup;
+    }
+
+    /* Non-IMSI SUPI is valid, but has no EPC IMSI alias. */
+    if (strcmp(type, OGS_ID_SUPI_TYPE_IMSI) != 0) {
+        rv = OGS_OK;
+        goto cleanup;
+    }
+
+    if (ogs_imsi_bcd_is_valid(value) == false) {
+        ogs_error("Invalid IMSI SUPI [%s]", supi);
+        goto cleanup;
+    }
+
+    ogs_cpystrn(imsi_bcd, value, OGS_MAX_IMSI_BCD_LEN+1);
+    *imsi_supi = true;
+    rv = OGS_OK;
+
+cleanup:
+    if (type)
+        ogs_free(type);
+    if (value)
+        ogs_free(value);
+
+    return rv;
+}
+
 char *ogs_s_nssai_sd_to_string(const ogs_uint24_t sd)
 {
     char *string = NULL;
