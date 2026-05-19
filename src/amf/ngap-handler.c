@@ -22,6 +22,8 @@
 #include "sbi-path.h"
 #include "nas-path.h"
 
+#define MAX_AMF_UE_NGAP_ID 0xffffffffffULL
+
 static bool maximum_number_of_gnbs_is_reached(void)
 {
     amf_gnb_t *gnb = NULL, *next_gnb = NULL;
