@@ -41,12 +41,45 @@ Portainer Stack (NF split)
   $ export USER=open5gs
   $ export DIST=ubuntu
   $ export TAG=latest
+  $ export BASE_IMAGE_TAG=latest
+  $ export BUILD_IMAGE_TAG=latest
   $ docker compose build --no-cache base build webui
   ```
 
 * Suggested tags used by the Portainer stack:
+  * `open5gs/ubuntu-latest-open5gs-base:latest`
   * `open5gs/ubuntu-latest-open5gs-build:latest`
   * `open5gs/open5gs-webui:latest`
+
+Build Images Directly with `docker build`
+===========================================
+
+Use separate values for:
+
+* the Ubuntu/Distro selector embedded in the image name (`DIST`/`TAG`)
+* the Docker tag of the base image (`BASE_IMAGE_TAG`)
+* the Docker tag of the final build image (`BUILD_IMAGE_TAG`)
+
+Example:
+
+```
+$ docker build \
+    -t open5gs/ubuntu-latest-open5gs-base:20260505 \
+    --build-arg dist=ubuntu \
+    --build-arg tag=latest \
+    docker/ubuntu/latest/base
+```
+
+```
+$ docker build \
+    -f docker/build/Dockerfile \
+    -t open5gs/ubuntu-latest-open5gs-build:20260505 \
+    --build-arg base_repo=open5gs/ubuntu-latest-open5gs-base \
+    --build-arg base_image_tag=20260505 \
+    .
+```
+
+The build image no longer infers the base image from `username`, `dist`, and `tag`. Pass the base image repository and its Docker tag explicitly.
 
 For OpenSUSE Build Service Release
 ===========================================

@@ -29,7 +29,7 @@ services:
       args:
         dist: ${DIST-ubuntu}
         tag: ${TAG-latest}
-    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-base
+    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-base:${BASE_IMAGE_TAG-latest}
     command: /bin/bash -c "echo 'base' services"
 
   build:
@@ -37,17 +37,16 @@ services:
       context: ../
       dockerfile: docker/build/Dockerfile
       args:
-        dist: ${DIST-ubuntu}
-        tag: ${TAG-latest}
-        username: ${USER}
-    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build
+        base_repo: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-base
+        base_image_tag: ${BASE_IMAGE_TAG-latest}
+    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build:${BUILD_IMAGE_TAG-latest}
     depends_on:
       - base
     command: /bin/bash -c "echo 'build' services"
 
   run:
 #    network_mode: "host"
-    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build
+    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build:${BUILD_IMAGE_TAG-latest}
     depends_on:
       - mongodb
       - build
@@ -63,7 +62,7 @@ services:
 #    command: /bin/bash -c "/root/setup.sh; /usr/bin/open5gs-pcrfd -D; /usr/bin/open5gs-pgwd -D; /usr/bin/open5gs-sgwd -D; /usr/bin/open5gs-hssd -D; /usr/bin/open5gs-mmed"
 
   test:
-    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build
+    image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build:${BUILD_IMAGE_TAG-latest}
     depends_on:
       - mongodb
       - build
