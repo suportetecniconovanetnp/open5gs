@@ -502,7 +502,14 @@ bool nrf_nnrf_handle_nf_status_subscribe(
     ogs_uuid_format(id, &uuid);
 
     subscription_data = ogs_sbi_subscription_data_add();
-    ogs_assert(subscription_data);
+    if (!subscription_data) {
+        ogs_error("ogs_sbi_subscription_data_add() failed");
+        ogs_assert(true ==
+            ogs_sbi_server_send_error(
+                stream, OGS_SBI_HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                recvmsg, "No subscription data available", NULL, NULL));
+        return false;
+    }
 
     ogs_sbi_subscription_data_set_id(subscription_data, id);
     ogs_assert(subscription_data->id);
@@ -616,7 +623,19 @@ bool nrf_nnrf_handle_nf_status_subscribe(
     if (!client) {
         ogs_debug("%s: ogs_sbi_client_add()", OGS_FUNC);
         client = ogs_sbi_client_add(scheme, fqdn, fqdn_port, addr, addr6);
-        ogs_assert(client);
+        if (!client) {
+            ogs_error("ogs_sbi_client_add() failed");
+            ogs_assert(true ==
+                ogs_sbi_server_send_error(
+                    stream, OGS_SBI_HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                    recvmsg, "No SBI client available",
+                    subscription_data->notification_uri, NULL));
+            ogs_free(fqdn);
+            ogs_freeaddrinfo(addr);
+            ogs_freeaddrinfo(addr6);
+            ogs_sbi_subscription_data_remove(subscription_data);
+            return false;
+        }
     }
     OGS_SBI_SETUP_CLIENT(subscription_data, client);
 
@@ -1259,7 +1278,13 @@ bool nrf_nnrf_handle_nf_discover(
 
         if (!nf_instance) {
             nf_instance = ogs_sbi_nf_instance_add();
-            ogs_assert(nf_instance);
+            if (!nf_instance) {
+                ogs_error("Can't add NRF instance due to insufficient space");
+                ogs_assert(true == ogs_sbi_server_send_error(
+                        stream, OGS_SBI_HTTP_STATUS_PAYLOAD_TOO_LARGE,
+                        recvmsg, "Insufficient space", NULL, NULL));
+                goto cleanup;
+            }
             ogs_sbi_nf_instance_set_type(nf_instance, OpenAPI_nf_type_NRF);
 
             /*
@@ -1291,9 +1316,18 @@ bool nrf_nnrf_handle_nf_discover(
                 rc = ogs_sbi_getaddr_from_uri(
                         &scheme, &fqdn, &fqdn_port, &addr, &addr6,
                         discovery_option->hnrf_uri);
-                if (rc == false || scheme == OpenAPI_uri_scheme_NULL)
-                    ogs_error("Invalid URL [%s]", request->h.uri);
-                else {
+                if (rc == false || scheme == OpenAPI_uri_scheme_NULL) {
+                    ogs_error("Invalid hnrf-uri [%s]",
+                            discovery_option->hnrf_uri);
+
+                    ogs_sbi_nf_instance_remove(nf_instance);
+
+                    ogs_assert(true == ogs_sbi_server_send_error(
+                            stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+                            recvmsg, "Invalid hnrf-uri",
+                            discovery_option->hnrf_uri, NULL));
+                    goto cleanup;
+                } else {
             /*
              * If there is an hnrf-uri, this value creates an nf-instance->fqdn,
              * which in turn creates a client->fqdn from the hnrf-uri.
@@ -1511,7 +1545,13 @@ static void handle_nf_discover_search_result(
         nf_instance = ogs_sbi_nf_instance_find(NFProfile->nf_instance_id);
         if (!nf_instance) {
             nf_instance = ogs_sbi_nf_instance_add();
-            ogs_assert(nf_instance);
+            if (!nf_instance) {
+                ogs_error("Can't add discovered NF instance [%s:%s] "
+                        "due to insufficient space",
+                        NFProfile->nf_instance_id,
+                        OpenAPI_nf_type_ToString(NFProfile->nf_type));
+                continue;
+            }
 
             ogs_sbi_nf_instance_set_id(nf_instance, NFProfile->nf_instance_id);
             nf_instance_created = true;
