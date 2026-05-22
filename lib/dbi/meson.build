@@ -26,7 +26,11 @@ libdbi_sources = files('''
     ims.c
 '''.split())
 
-libmongoc_dep = dependency('libmongoc-1.0')
+libmongoc_dep = dependency('libmongoc-1.0', required : false)
+if not libmongoc_dep.found()
+    # mongo-c-driver 2.x renamed the pkg-config module from libmongoc-1.0.
+    libmongoc_dep = dependency('mongoc2')
+endif
 
 libdbi_inc = include_directories('.')
 
