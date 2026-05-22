@@ -17,7 +17,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <mongoc/mongoc.h>
+#include <mongoc.h>
 
 #include "ogs-dbi.h"
 

@@ -24,7 +24,7 @@
 #ifndef OGS_MONGOC_H
 #define OGS_MONGOC_H
 
-#include <mongoc/mongoc.h>
+#include <mongoc.h>
 
 #ifdef __cplusplus
 extern "C" {
