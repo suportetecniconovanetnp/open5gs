@@ -74,12 +74,12 @@ $ docker build \
 $ docker build \
     -f docker/build/Dockerfile \
     -t open5gs/ubuntu-latest-open5gs-build:20260505 \
-    --build-arg base_repo=open5gs/ubuntu-latest-open5gs-base \
-    --build-arg base_image_tag=20260505 \
+    --build-arg base_image_name=open5gs/ubuntu-latest-open5gs-base \
+    --build-arg base_tag=20260505 \
     .
 ```
 
-The build image no longer infers the base image from `username`, `dist`, and `tag`. Pass the base image repository and its Docker tag explicitly.
+The build image no longer infers the base image from `username`, `dist`, and `tag`. Pass the base image name and its Docker tag explicitly.
 
 For OpenSUSE Build Service Release
 ===========================================

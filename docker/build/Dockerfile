@@ -1,6 +1,6 @@
-ARG base_repo=acetcom/ubuntu-latest-open5gs-base
-ARG base_image_tag=latest
-FROM ${base_repo}:${base_image_tag}
+ARG base_image_name=acetcom/ubuntu-latest-open5gs-base
+ARG base_tag=latest
+FROM ${base_image_name}:${base_tag}
 
 LABEL org.opencontainers.image.authors="Sukchan Lee <acetcom@gmail.com>"
 

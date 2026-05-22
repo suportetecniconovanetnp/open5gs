@@ -37,8 +37,8 @@ services:
       context: ../
       dockerfile: docker/build/Dockerfile
       args:
-        base_repo: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-base
-        base_image_tag: ${BASE_IMAGE_TAG-latest}
+        base_image_name: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-base
+        base_tag: ${BASE_IMAGE_TAG-latest}
     image: ${USER}/${DIST-ubuntu}-${TAG-latest}-open5gs-build:${BUILD_IMAGE_TAG-latest}
     depends_on:
       - base
