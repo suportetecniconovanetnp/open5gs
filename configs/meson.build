@@ -34,6 +34,7 @@ example_conf = '''
     sample.yaml
     attach.yaml
     attach-eir-enabled.yaml
+    dns.yaml
     310014.yaml
     csfb.yaml
     volte.yaml

@@ -86,6 +86,26 @@ bool nrf_nnrf_handle_nf_register(ogs_sbi_nf_instance_t *nf_instance,
         return false;
     }
 
+    /*
+     * Reject non-positive heartBeatTimer before it reaches the timer layer.
+     *
+     * A non-positive value would otherwise be stored as-is in
+     * nf_instance->time.heartbeat_interval and later passed to
+     * ogs_timer_start(), where ogs_assert(duration) aborts the NRF
+     * (heartBeatTimer == -no_heartbeat_margin yields a zero duration),
+     * or schedules an already-expired timer for other negative values.
+     */
+    if (NFProfile->is_heart_beat_timer == true &&
+            NFProfile->heart_beat_timer <= 0) {
+        ogs_error("Invalid heartBeatTimer [%d]",
+                NFProfile->heart_beat_timer);
+        ogs_assert(true ==
+            ogs_sbi_server_send_error(
+                stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
+                recvmsg, "Invalid heartBeatTimer", NULL, NULL));
+        return false;
+    }
+
     /* Validate the PLMN-ID against configured serving PLMN-IDs */
     if (NFProfile->plmn_list) {
         /* Set PLMN status to invalid */
@@ -333,8 +353,13 @@ bool nrf_nnrf_handle_nf_update(ogs_sbi_nf_instance_t *nf_instance,
             CASE(OGS_SBI_PATCH_PATH_PLMN_LIST)
                 /* Ensure the value is not null and is a valid JSON array */
                 if (patch_item->value && patch_item->value->json) {
+                    ogs_plmn_id_t new_plmn_id[
+                        OGS_ARRAY_SIZE(nf_instance->plmn_id)];
+                    int new_num_of_plmn_id = 0;
+
                     /* Set PLMN status to invalid */
                     plmn_valid = false;
+                    memset(new_plmn_id, 0, sizeof(new_plmn_id));
 
                     plmn_array = patch_item->value->json;
                     if (!cJSON_IsArray(plmn_array)) {
@@ -345,18 +370,13 @@ bool nrf_nnrf_handle_nf_update(ogs_sbi_nf_instance_t *nf_instance,
                         return false;
                     }
 
-                    /* Clear existing PLMN data in nf_instance */
-                    memset(nf_instance->plmn_id, 0,
-                            sizeof(nf_instance->plmn_id));
-                    nf_instance->num_of_plmn_id = 0;
-
                     /* Iterate through the JSON array of PLMN IDs */
                     cJSON_ArrayForEach(plmn_item, plmn_array) {
                         OpenAPI_plmn_id_t plmn_id;
                         memset(&plmn_id, 0, sizeof(plmn_id));
 
-                        if (nf_instance->num_of_plmn_id >=
-                                OGS_ARRAY_SIZE(nf_instance->plmn_id)) {
+                        if (new_num_of_plmn_id >=
+                                OGS_ARRAY_SIZE(new_plmn_id)) {
                             ogs_error("Exceeded maximum number of PLMN IDs");
                             ogs_assert(true == ogs_sbi_server_send_error(
                                 stream, OGS_SBI_HTTP_STATUS_BAD_REQUEST,
@@ -390,15 +410,11 @@ bool nrf_nnrf_handle_nf_update(ogs_sbi_nf_instance_t *nf_instance,
                             return false;
                         }
 
-                        /*
-                         * Convert OpenAPI_plmn_id_t to ogs_plmn_id_t
-                         * and store in nf_instance
-                         */
+                        /* Convert OpenAPI_plmn_id_t to temporary PLMN list */
                         ogs_sbi_parse_plmn_id(
-                                &nf_instance->
-                                    plmn_id[nf_instance->num_of_plmn_id],
+                                &new_plmn_id[new_num_of_plmn_id],
                                 &plmn_id);
-                        nf_instance->num_of_plmn_id++;
+                        new_num_of_plmn_id++;
 
                         /* Compare with the serving PLMN list */
                         for (i = 0;
@@ -424,6 +440,15 @@ bool nrf_nnrf_handle_nf_update(ogs_sbi_nf_instance_t *nf_instance,
                             "PLMN-ID not allowed", NULL, NULL));
                         return false;
                     }
+
+                    /*
+                     * Commit the new PLMN list only after all validation
+                     * succeeds. This keeps rejected PATCH requests from
+                     * modifying the stored NF instance state.
+                     */
+                    memcpy(nf_instance->plmn_id, new_plmn_id,
+                            sizeof(new_plmn_id));
+                    nf_instance->num_of_plmn_id = new_num_of_plmn_id;
                 }
                 break;
             DEFAULT
@@ -578,7 +603,7 @@ bool nrf_nnrf_handle_nf_status_subscribe(
             subscription_data->subscr_cond.nf_type = SubscrCond->nf_type;
         else if (SubscrCond->service_name)
             subscription_data->subscr_cond.service_name =
-                ogs_strdup(SubscrCond->service_name);
+                SubscrCond->service_name;
         else if (SubscrCond->nf_instance_id)
             subscription_data->subscr_cond.nf_instance_id = 
                 ogs_strdup(SubscrCond->nf_instance_id);
@@ -678,7 +703,8 @@ bool nrf_nnrf_handle_nf_status_subscribe(
     ogs_assert(server);
 
     memset(&header, 0, sizeof(header));
-    header.service.name = (char *)OGS_SBI_SERVICE_NAME_NNRF_NFM;
+    header.service.name =
+        OpenAPI_service_name_ToString(OpenAPI_service_name_nnrf_nfm);
     header.api.version = (char *)OGS_SBI_API_V1;
     header.resource.component[0] =
         (char *)OGS_SBI_RESOURCE_NAME_SUBSCRIPTIONS;
@@ -1001,7 +1027,7 @@ bool nrf_nnrf_handle_nf_profile_retrieval(
     memset(&sendmsg, 0, sizeof(sendmsg));
 
     sendmsg.NFProfile = ogs_nnrf_nfm_build_nf_profile(
-            nf_instance, NULL, NULL, true);
+            nf_instance, OpenAPI_service_name_NULL, NULL, true);
     if (!sendmsg.NFProfile) {
         ogs_error("ogs_nnrf_nfm_build_nf_profile() failed");
         return false;
@@ -1066,7 +1092,8 @@ bool nrf_nnrf_handle_nf_discover(
         if (discovery_option->num_of_service_names) {
             for (i = 0; i < discovery_option->num_of_service_names; i++)
                 ogs_debug("[%d] service-names[%s]", i,
-                    discovery_option->service_names[i]);
+                        OpenAPI_service_name_ToString(
+                            discovery_option->service_names[i]));
         }
         if (discovery_option->num_of_snssais) {
             for (i = 0; i < discovery_option->num_of_snssais; i++)
@@ -1166,6 +1193,11 @@ bool nrf_nnrf_handle_nf_discover(
     SearchResult = ogs_calloc(1, sizeof(*SearchResult));
     ogs_assert(SearchResult);
 
+    ogs_assert(ogs_local_conf()->time.nf_instance.validity_duration);
+    SearchResult->validity_period =
+        ogs_local_conf()->time.nf_instance.validity_duration;
+    ogs_assert(SearchResult->validity_period);
+
     SearchResult->nf_instances = OpenAPI_list_create();
     ogs_assert(SearchResult->nf_instances);
 
@@ -1199,7 +1231,7 @@ bool nrf_nnrf_handle_nf_discover(
                 nf_instance->fqdn ? nf_instance->fqdn : "NULL");
 
         NFProfile = ogs_nnrf_nfm_build_nf_profile(
-                nf_instance, NULL, discovery_option,
+                nf_instance, OpenAPI_service_name_NULL, discovery_option,
                 discovery_option &&
                 OGS_SBI_FEATURES_IS_SET(
                     discovery_option->requester_features,
@@ -1222,11 +1254,6 @@ bool nrf_nnrf_handle_nf_discover(
     if (SearchResult->nf_instances->count) {
 
         /* NF-Instances are Discovered */
-
-        SearchResult->is_validity_period = true;
-        SearchResult->validity_period =
-            ogs_local_conf()->time.nf_instance.validity_duration;
-        ogs_assert(SearchResult->validity_period);
 
         sendmsg.SearchResult = SearchResult;
         sendmsg.http.cache_control =
@@ -1426,6 +1453,9 @@ bool nrf_nnrf_handle_nf_discover(
         /* No Discovery */
 
         sendmsg.SearchResult = SearchResult;
+        sendmsg.http.cache_control =
+            ogs_msprintf("max-age=%d", SearchResult->validity_period);
+        ogs_assert(sendmsg.http.cache_control);
 
         response = ogs_sbi_build_response(&sendmsg, OGS_SBI_HTTP_STATUS_OK);
         ogs_assert(response);
@@ -1453,32 +1483,53 @@ static int discover_handler(
         int status, ogs_sbi_response_t *response, void *data)
 {
     int rv;
+    int ret = OGS_OK;
     ogs_sbi_message_t message;
 
     nrf_assoc_t *assoc = data;
     ogs_sbi_stream_t *stream = NULL;
 
     ogs_assert(assoc);
-    stream = assoc->stream;
-    ogs_assert(stream);
+
+    /*
+     * Zero-init so the unified cleanup: below can always call
+     * ogs_sbi_message_free() unconditionally. The free function
+     * is fully NULL-guarded per field, and ogs_sbi_parse_response()
+     * (via parse_header()) zeroes the struct itself on entry,
+     * so this single initialization covers every goto cleanup path.
+     */
+    memset(&message, 0, sizeof(message));
+
+    /*
+     * Resolve the originating inbound stream (GH#4476).
+     *
+     * Per the lib/sbi/client.c callback convention:
+     *   status == OGS_OK              -> response is non-NULL
+     *   OGS_DONE / TIMEUP / ERROR     -> response is NULL
+     *
+     * The stream may already be gone if the original inter-PLMN
+     * client RST_STREAM'd or timed out before this (possibly
+     * delayed) Home-NRF reply arrived. All paths converge on
+     * cleanup: below, which dispatches over (stream, response).
+     */
+    stream = ogs_sbi_stream_find_by_id(assoc->stream_id);
 
     if (status != OGS_OK) {
-
         ogs_log_message(
                 status == OGS_DONE ? OGS_LOG_DEBUG : OGS_LOG_WARN, 0,
                 "response_handler() failed [%d]", status);
-
-        ogs_assert(true ==
-            ogs_sbi_server_send_error(stream,
-                OGS_SBI_HTTP_STATUS_INTERNAL_SERVER_ERROR, NULL,
-                "response_handler() failed", NULL, NULL));
-
-        nrf_assoc_remove(assoc);
-
-        return OGS_ERROR;
+        ret = OGS_ERROR;
+        goto cleanup;
     }
 
     ogs_assert(response);
+
+    if (!stream) {
+        ogs_error("nnrf-disc: originating SBI stream already closed; "
+                "dropping delayed Home-NRF response [assoc_stream_id:%d]",
+                (int)assoc->stream_id);
+        goto cleanup;
+    }
 
     rv = ogs_sbi_parse_response(&message, response);
     if (rv != OGS_OK) {
@@ -1499,11 +1550,28 @@ static int discover_handler(
     handle_nf_discover_search_result(message.SearchResult);
 
 cleanup:
-    ogs_expect(true == ogs_sbi_server_send_response(stream, response));
-    nrf_assoc_remove(assoc);
-    ogs_sbi_message_free(&message);
+    /*
+     * Dispatch over (stream, response):
+     *   alive + resp  -> forward (proxy: parseable or not)
+     *   alive + null  -> synthesize HTTP 500
+     *   gone  + resp  -> drop orphaned response (#4476)
+     *   gone  + null  -> nothing to dispose
+     */
+    if (stream && response)
+        ogs_expect(true ==
+            ogs_sbi_server_send_response(stream, response));
+    else if (stream)
+        ogs_assert(true ==
+            ogs_sbi_server_send_error(stream,
+                OGS_SBI_HTTP_STATUS_INTERNAL_SERVER_ERROR, NULL,
+                "response_handler() failed", NULL, NULL));
+    else if (response)
+        ogs_sbi_response_free(response);
 
-    return OGS_OK;
+    ogs_sbi_message_free(&message);
+    nrf_assoc_remove(assoc);
+
+    return ret;
 }
 
 static void handle_nf_discover_search_result(

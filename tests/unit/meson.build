@@ -27,11 +27,13 @@ testunit_unit_sources = files('''
     nrf-discovery-test.c
     crash-test.c
     mme-s13-handler-test.c
+    mme-dns-select-test.c
 '''.split())
 
 testunit_unit_exe = executable('unit',
     sources : testunit_unit_sources,
     c_args : [testunit_core_cc_flags, sbi_cc_flags],
+    include_directories : srcinc,
     dependencies : [libs1ap_dep,
                     libgtp_dep,
                     libngap_dep,

@@ -22,8 +22,9 @@
 #include "sbi-path.h"
 #include "nas-path.h"
 
-int amf_nudm_sdm_handle_provisioned(
-        amf_ue_t *amf_ue, int state, ogs_sbi_message_t *recvmsg)
+static int amf_nudm_sdm_handle_provisioned_internal(
+        amf_ue_t *amf_ue, int state, ogs_sbi_message_t *recvmsg,
+        bool continue_chain)
 {
     int i, r;
 
@@ -202,8 +203,16 @@ int amf_nudm_sdm_handle_provisioned(
             return OGS_ERROR;
         }
 
+        /*
+         * When called from amf_nudm_sdm_handle_provisioned_data_sets(),
+         * the SMF Selection subscription data is already available from
+         * the same combined response; do not issue a separate GET.
+         */
+        if (!continue_chain)
+            break;
+
         r = amf_ue_sbi_discover_and_send(
-                OGS_SBI_SERVICE_TYPE_NUDM_SDM, NULL,
+                OpenAPI_service_name_nudm_sdm, NULL,
                 amf_nudm_sdm_build_get,
                 amf_ue, state, (char *)OGS_SBI_RESOURCE_NAME_SMF_SELECT_DATA);
         ogs_expect(r == OGS_OK);
@@ -304,7 +313,7 @@ int amf_nudm_sdm_handle_provisioned(
             }
         }
         r = amf_ue_sbi_discover_and_send(
-                OGS_SBI_SERVICE_TYPE_NUDM_SDM, NULL,
+                OpenAPI_service_name_nudm_sdm, NULL,
                 amf_nudm_sdm_build_get,
                 amf_ue, state,
                 (char *)OGS_SBI_RESOURCE_NAME_UE_CONTEXT_IN_SMF_DATA);
@@ -317,7 +326,7 @@ int amf_nudm_sdm_handle_provisioned(
             /* we already have a SDM subscription to UDM; continue without
              * subscribing again */
             r = amf_ue_sbi_discover_and_send(
-                    OGS_SBI_SERVICE_TYPE_NPCF_AM_POLICY_CONTROL, NULL,
+                    OpenAPI_service_name_npcf_am_policy_control, NULL,
                     amf_npcf_am_policy_control_build_create,
                     amf_ue, state, NULL);
             ogs_expect(r == OGS_OK);
@@ -325,7 +334,7 @@ int amf_nudm_sdm_handle_provisioned(
         }
         else {
             r = amf_ue_sbi_discover_and_send(
-                    OGS_SBI_SERVICE_TYPE_NUDM_SDM, NULL,
+                    OpenAPI_service_name_nudm_sdm, NULL,
                     amf_nudm_sdm_build_subscription,
                     amf_ue, state, (char *)OGS_SBI_RESOURCE_NAME_AM_DATA);
             ogs_expect(r == OGS_OK);
@@ -430,7 +439,7 @@ int amf_nudm_sdm_handle_provisioned(
         ogs_sbi_header_free(&header);
 
         r = amf_ue_sbi_discover_and_send(
-                OGS_SBI_SERVICE_TYPE_NPCF_AM_POLICY_CONTROL, NULL,
+                OpenAPI_service_name_npcf_am_policy_control, NULL,
                 amf_npcf_am_policy_control_build_create, amf_ue, state, NULL);
         ogs_expect(r == OGS_OK);
         ogs_assert(r != OGS_ERROR);
@@ -440,4 +449,71 @@ int amf_nudm_sdm_handle_provisioned(
     END
 
     return OGS_OK;
+}
+
+int amf_nudm_sdm_handle_provisioned(
+        amf_ue_t *amf_ue, int state, ogs_sbi_message_t *recvmsg)
+{
+    return amf_nudm_sdm_handle_provisioned_internal(
+            amf_ue, state, recvmsg, true);
+}
+
+int amf_nudm_sdm_handle_provisioned_data_sets(
+        amf_ue_t *amf_ue, int state, ogs_sbi_message_t *recvmsg)
+{
+    int rv, r;
+    ogs_sbi_message_t message;
+    OpenAPI_provisioned_data_sets_t *ProvisionedDataSets = NULL;
+
+    ogs_assert(amf_ue);
+    ogs_assert(recvmsg);
+
+    ProvisionedDataSets = recvmsg->ProvisionedDataSets;
+
+    /*
+     * Both datasets were requested with dataset-names=AM,SMF_SEL, so a
+     * 200 response missing either one is treated as an error instead of
+     * silently skipping the missing dataset.
+     */
+    if (!ProvisionedDataSets ||
+        !ProvisionedDataSets->am_data ||
+        !ProvisionedDataSets->smf_sel_data) {
+        ogs_error("[%s] Incomplete ProvisionedDataSets [AM:%p SMF_SEL:%p]",
+                amf_ue->supi,
+                ProvisionedDataSets ?
+                    (void *)ProvisionedDataSets->am_data : NULL,
+                ProvisionedDataSets ?
+                    (void *)ProvisionedDataSets->smf_sel_data : NULL);
+        r = nas_5gs_send_gmm_reject_from_sbi(
+                amf_ue, OGS_SBI_HTTP_STATUS_INTERNAL_SERVER_ERROR);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+        return OGS_ERROR;
+    }
+
+    /*
+     * Dispatch each dataset to the existing per-dataset handling with a
+     * minimal temporary message: only the resource name and the borrowed
+     * dataset pointer are set, so the temporary message never owns any
+     * of the response memory (recvmsg keeps the ownership).
+     */
+    memset(&message, 0, sizeof(message));
+    message.h.resource.component[1] =
+        (char *)OGS_SBI_RESOURCE_NAME_AM_DATA;
+    message.AccessAndMobilitySubscriptionData =
+        ProvisionedDataSets->am_data;
+
+    rv = amf_nudm_sdm_handle_provisioned_internal(
+            amf_ue, state, &message, false);
+    if (rv != OGS_OK)
+        return rv;
+
+    memset(&message, 0, sizeof(message));
+    message.h.resource.component[1] =
+        (char *)OGS_SBI_RESOURCE_NAME_SMF_SELECT_DATA;
+    message.SmfSelectionSubscriptionData =
+        ProvisionedDataSets->smf_sel_data;
+
+    return amf_nudm_sdm_handle_provisioned_internal(
+            amf_ue, state, &message, true);
 }

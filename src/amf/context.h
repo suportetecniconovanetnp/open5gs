@@ -142,6 +142,12 @@ typedef struct amf_gnb_s {
     bool            gnb_id_presence;
     uint32_t        gnb_id;     /* gNB_ID received from gNB */
     uint8_t         gnb_id_length; /* gNB-ID BIT STRING length(22..32) */
+    /* Optional human-readable RAN node name from the NGSetupRequest
+     * RANNodeName IE (NGAP id_RANNodeName).  Empty string when the gNB
+     * doesn't include the IE.  Capped at 64 octets to match the typical
+     * deployment use of short identifiers; the spec PrintableString
+     * upper bound is 150 but real-world names are short. */
+    char            ran_node_name[64];
     ogs_plmn_id_t   plmn_id;    /* gNB PLMN-ID received from gNB */
     ogs_sctp_sock_t sctp;       /* SCTP socket */
 
@@ -547,6 +553,24 @@ struct amf_ue_s {
     do { \
         ran_ue_t *ran_ue_holding = NULL; \
         \
+        ran_ue_holding = ran_ue_find_by_id((__aMF)->ran_ue_holding_id); \
+        if (ran_ue_holding) { \
+            int r; \
+            ogs_warn("[%s] Holding NG context already exists", \
+                    (__aMF)->suci); \
+            ogs_warn("[%s]    RAN_UE_NGAP_ID[%lld] AMF_UE_NGAP_ID[%lld]", \
+                    (__aMF)->suci, \
+                    (long long)ran_ue_holding->ran_ue_ngap_id, \
+                    (long long)ran_ue_holding->amf_ue_ngap_id); \
+            r = ngap_send_ran_ue_context_release_command( \
+                    ran_ue_holding, \
+                    NGAP_Cause_PR_nas, NGAP_CauseNas_normal_release, \
+                    NGAP_UE_CTX_REL_NG_CONTEXT_REMOVE, 0); \
+            ogs_expect(r == OGS_OK); \
+        } else if ((__aMF)->ran_ue_holding_id != OGS_INVALID_POOL_ID) { \
+            ogs_warn("[%s] Holding NG context has already been removed", \
+                    (__aMF)->suci); \
+        } \
         (__aMF)->ran_ue_holding_id = OGS_INVALID_POOL_ID; \
         \
         ran_ue_holding = ran_ue_find_by_id((__aMF)->ran_ue_id); \

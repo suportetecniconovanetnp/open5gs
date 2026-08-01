@@ -209,6 +209,8 @@ void ogs_sbi_message_free(ogs_sbi_message_t *message)
         OpenAPI_app_session_context_free(message->AppSessionContext);
     if (message->AppSessionContextUpdateDataPatch)
         OpenAPI_app_session_context_update_data_patch_free(message->AppSessionContextUpdateDataPatch);
+    if (message->TerminationInfo)
+        OpenAPI_termination_info_free(message->TerminationInfo);
     if (message->SmPolicyNotification)
         OpenAPI_sm_policy_notification_free(message->SmPolicyNotification);
     if (message->TerminationNotification)
@@ -482,7 +484,8 @@ ogs_sbi_request_t *ogs_sbi_build_request(ogs_sbi_message_t *message)
             } else {
                 ogs_warn("build failed: service-names[%d:%s]",
                             discovery_option->num_of_service_names,
-                            discovery_option->service_names[0]);
+                            OpenAPI_service_name_ToString(
+                                discovery_option->service_names[0]));
             }
         }
         if (discovery_option->num_of_snssais) {
@@ -1703,6 +1706,10 @@ static char *build_json(ogs_sbi_message_t *message)
         item = OpenAPI_app_session_context_update_data_patch_convertToJSON(
                 message->AppSessionContextUpdateDataPatch);
         ogs_assert(item);
+    } else if (message->TerminationInfo) {
+        item = OpenAPI_termination_info_convertToJSON(
+                message->TerminationInfo);
+        ogs_assert(item);
     } else if (message->SmPolicyNotification) {
         item = OpenAPI_sm_policy_notification_convertToJSON(
                 message->SmPolicyNotification);
@@ -1763,6 +1770,7 @@ static int parse_json(ogs_sbi_message_t *message,
         char *content_type, char *json)
 {
     int rv = OGS_OK;
+    int service_name_id = OpenAPI_service_name_NULL;
     cJSON *item = NULL;
 
     ogs_assert(message);
@@ -1810,8 +1818,10 @@ static int parse_json(ogs_sbi_message_t *message,
             }
         }
     } else {
-        SWITCH(message->h.service.name)
-        CASE(OGS_SBI_SERVICE_NAME_NNRF_NFM)
+        service_name_id = ogs_sbi_service_name_id_from_string(
+                message->h.service.name);
+        switch (service_name_id) {
+        case OpenAPI_service_name_nnrf_nfm:
 
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_NF_INSTANCES)
@@ -1872,7 +1882,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NNRF_DISC)
+        case OpenAPI_service_name_nnrf_disc:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_NF_INSTANCES)
                 if (message->res_status < 300) {
@@ -1894,7 +1904,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NAUSF_AUTH)
+        case OpenAPI_service_name_nausf_auth:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_UE_AUTHENTICATIONS)
                 SWITCH(message->h.method)
@@ -1947,7 +1957,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NUDM_UEAU)
+        case OpenAPI_service_name_nudm_ueau:
             SWITCH(message->h.resource.component[1])
             CASE(OGS_SBI_RESOURCE_NAME_SECURITY_INFORMATION)
                 SWITCH(message->h.resource.component[2])
@@ -1996,7 +2006,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NUDM_UECM)
+        case OpenAPI_service_name_nudm_uecm:
             SWITCH(message->h.resource.component[1])
             CASE(OGS_SBI_RESOURCE_NAME_REGISTRATIONS)
                 SWITCH(message->h.resource.component[2])
@@ -2064,7 +2074,29 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NUDM_SDM)
+        case OpenAPI_service_name_nudm_sdm:
+            if (!message->h.resource.component[1]) {
+                /*
+                 * Combined SDM retrieval:
+                 *   GET /nudm-sdm/v2/{supi}?dataset-names=AM,SMF_SEL
+                 *
+                 * The UDM relays the ProvisionedDataSets that the UDR
+                 * built from the requested dataset-names, so parse the
+                 * whole set here in a single response.
+                 */
+                if (message->res_status < 300) {
+                    message->ProvisionedDataSets =
+                        OpenAPI_provisioned_data_sets_parseFromJSON(item);
+                    if (!message->ProvisionedDataSets) {
+                        rv = OGS_ERROR;
+                        ogs_error("JSON parse error");
+                    }
+                } else {
+                    ogs_error("HTTP ERROR Status : %d", message->res_status);
+                }
+                break;
+            }
+
             SWITCH(message->h.resource.component[1])
             CASE(OGS_SBI_RESOURCE_NAME_NSSAI)
                 if (message->res_status < 300) {
@@ -2168,7 +2200,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NUDR_DR)
+        case OpenAPI_service_name_nudr_dr:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_SUBSCRIPTION_DATA)
                 SWITCH(message->h.resource.component[2])
@@ -2398,7 +2430,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NSMF_PDUSESSION)
+        case OpenAPI_service_name_nsmf_pdusession:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_SM_CONTEXTS)
                 SWITCH(message->h.resource.component[2])
@@ -2649,7 +2681,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NAMF_COMM)
+        case OpenAPI_service_name_namf_comm:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_UE_CONTEXTS)
                 SWITCH(message->h.resource.component[2])
@@ -2729,7 +2761,7 @@ static int parse_json(ogs_sbi_message_t *message,
                         message->h.resource.component[0]);
             END
             break;
-        CASE(OGS_SBI_SERVICE_NAME_NPCF_AM_POLICY_CONTROL)
+        case OpenAPI_service_name_npcf_am_policy_control:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_POLICIES)
                 if (message->res_status == 0) {
@@ -2756,7 +2788,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NPCF_SMPOLICYCONTROL)
+        case OpenAPI_service_name_npcf_smpolicycontrol:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_SM_POLICIES)
                 if (!message->h.resource.component[1]) {
@@ -2804,7 +2836,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NNSSF_NSSELECTION)
+        case OpenAPI_service_name_nnssf_nsselection:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_NETWORK_SLICE_INFORMATION)
                 if (message->res_status == OGS_SBI_HTTP_STATUS_OK) {
@@ -2825,7 +2857,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NBSF_MANAGEMENT)
+        case OpenAPI_service_name_nbsf_management:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_PCF_BINDINGS)
                 if (message->h.resource.component[1]) {
@@ -2877,7 +2909,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NPCF_POLICYAUTHORIZATION)
+        case OpenAPI_service_name_npcf_policyauthorization:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_APP_SESSIONS)
                 if (message->h.resource.component[1]) {
@@ -2885,6 +2917,14 @@ static int parse_json(ogs_sbi_message_t *message,
                         SWITCH(message->h.resource.component[2])
                         CASE(OGS_SBI_RESOURCE_NAME_DELETE)
                             /* Nothing */
+                            break;
+                        CASE(OGS_SBI_RESOURCE_NAME_TERMINATE)
+                            message->TerminationInfo =
+                                OpenAPI_termination_info_parseFromJSON(item);
+                            if (!message->TerminationInfo) {
+                                rv = OGS_ERROR;
+                                ogs_error("JSON parse error");
+                            }
                             break;
                         DEFAULT
                             rv = OGS_ERROR;
@@ -2937,7 +2977,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_N32C_HANDSHAKE)
+        case OGS_SBI_SERVICE_NAME_ID_N32C_HANDSHAKE:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_EXCHANGE_CAPABILITY)
                 SWITCH(message->h.method)
@@ -2970,7 +3010,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NAMF_CALLBACK)
+        case OGS_SBI_SERVICE_NAME_ID_NAMF_CALLBACK:
             SWITCH(message->h.resource.component[1])
             CASE(OGS_SBI_RESOURCE_NAME_SM_CONTEXT_STATUS)
                 if (message->res_status < 300) {
@@ -3019,7 +3059,7 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        CASE(OGS_SBI_SERVICE_NAME_NSMF_CALLBACK)
+        case OGS_SBI_SERVICE_NAME_ID_NSMF_CALLBACK:
             SWITCH(message->h.resource.component[0])
             CASE(OGS_SBI_RESOURCE_NAME_N1_N2_FAILURE_NOTIFY)
                 if (message->res_status < 300) {
@@ -3091,11 +3131,11 @@ static int parse_json(ogs_sbi_message_t *message,
             END
             break;
 
-        DEFAULT
+        default:
             rv = OGS_ERROR;
             ogs_error("Not implemented API name [%s]",
                     message->h.service.name);
-        END
+        }
     }
 
 cleanup:
@@ -3191,12 +3231,23 @@ static int on_header_field(
     data = multipart_parser_get_data(parser);
     ogs_assert(data);
 
-    if (at && length) {
-        if (data->header_field)
-            ogs_free(data->header_field);
-        data->header_field = ogs_strndup(at, length);
-        ogs_assert(data->header_field);
+    /*
+     * The multipart state machine emits a zero-length field name when a
+     * header line begins with ':' (e.g. ":application/json"). Such input is
+     * malformed; rejecting it here prevents a NULL data->header_field from
+     * propagating into on_header_value(). See Issues #4608
+     */
+    if (!at || !length) {
+        ogs_error("Invalid multipart header field");
+        data->parse_error = true;
+        return 0;
     }
+
+    if (data->header_field)
+        ogs_free(data->header_field);
+    data->header_field = ogs_strndup(at, length);
+    ogs_assert(data->header_field);
+
     return 0;
 }
 
@@ -3208,6 +3259,18 @@ static int on_header_value(
     ogs_assert(parser);
     data = multipart_parser_get_data(parser);
     ogs_assert(data);
+
+    /*
+     * Defense in depth: a header value must be preceded by a valid field
+     * name. on_header_field() already rejects empty names, but guard here as
+     * well so ogs_strcasecmp() (plain strcasecmp, not NULL-safe) is never
+     * called with a NULL data->header_field.
+     */
+    if (!data->header_field) {
+        ogs_error("Multipart header value without field name");
+        data->parse_error = true;
+        return 0;
+    }
 
     if (data->num_of_part < OGS_SBI_MAX_NUM_OF_PART && at && length) {
         if (!ogs_strcasecmp(data->header_field, OGS_SBI_CONTENT_TYPE)) {
@@ -3485,6 +3548,9 @@ static bool build_multipart(
     char *content_type = NULL;
     char *json = NULL;
 
+    size_t remaining;
+    size_t closing_boundary_len;
+
     ogs_assert(message);
     ogs_assert(http);
 
@@ -3492,6 +3558,9 @@ static bool build_multipart(
     strcpy(boundary, "=-");
     ogs_assert(ogs_base64_encode_from_buffer(
             boundary + 2, sizeof(boundary) - 2, digest, sizeof(digest)) > 0);
+
+    closing_boundary_len =
+        sizeof("\r\n--") - 1 + strlen(boundary) + sizeof("--\r\n") - 1;
 
     p = http->content = ogs_calloc(1, OGS_MAX_SDU_LEN);
     if (!p) {
@@ -3526,11 +3595,35 @@ static bool build_multipart(
                 OGS_SBI_CONTENT_ID, message->part[i].content_id);
         p = ogs_slprintf(p, last, "%s: %s\r\n\r\n",
                 OGS_SBI_CONTENT_TYPE, message->part[i].content_type);
+
+        /*
+         * The part body is copied with memcpy() below, which is not bounded
+         * by `last` (unlike ogs_slprintf() above). Reserve space for the
+         * closing boundary before copying the part body.
+         */
+        remaining = (p < last) ? (size_t)(last - p) : 0;
+        if (remaining < closing_boundary_len + 1 ||
+                message->part[i].pkbuf->len >
+                remaining - closing_boundary_len - 1) {
+            ogs_error("Multipart part too large to build "
+                    "[part:%d content-id:%s len:%u remaining:%zu]",
+                    i, message->part[i].content_id,
+                    message->part[i].pkbuf->len, remaining);
+            return false;
+        }
+
         memcpy(p, message->part[i].pkbuf->data, message->part[i].pkbuf->len);
         p += message->part[i].pkbuf->len;
     }
 
     /* Last boundary */
+    remaining = (p < last) ? (size_t)(last - p) : 0;
+    if (remaining < closing_boundary_len + 1) {
+        ogs_error("Multipart content too large to build "
+                "[closing-boundary:%zu remaining:%zu]",
+                closing_boundary_len, remaining);
+        return false;
+    }
     p = ogs_slprintf(p, last, "\r\n--%s--\r\n", boundary);
 
     http->content_length = p - http->content;
@@ -3585,8 +3678,6 @@ ogs_sbi_discovery_option_t *ogs_sbi_discovery_option_new(void)
 void ogs_sbi_discovery_option_free(
         ogs_sbi_discovery_option_t *discovery_option)
 {
-    int i;
-
     ogs_assert(discovery_option);
 
     if (discovery_option->target_nf_instance_id)
@@ -3595,9 +3686,6 @@ void ogs_sbi_discovery_option_free(
         ogs_free(discovery_option->requester_nf_instance_id);
     if (discovery_option->dnn)
         ogs_free(discovery_option->dnn);
-
-    for (i = 0; i < discovery_option->num_of_service_names; i++)
-        ogs_free(discovery_option->service_names[i]);
 
     if (discovery_option->hnrf_uri)
         ogs_free(discovery_option->hnrf_uri);
@@ -3641,16 +3729,16 @@ void ogs_sbi_discovery_option_set_dnn(
 
 void ogs_sbi_discovery_option_add_service_names(
         ogs_sbi_discovery_option_t *discovery_option,
-        char *service_name)
+        OpenAPI_service_name_e service_name)
 {
     ogs_assert(discovery_option);
     ogs_assert(service_name);
 
     ogs_assert(discovery_option->num_of_service_names <
-                OGS_SBI_MAX_NUM_OF_SERVICE_TYPE);
+                OGS_SBI_MAX_NUM_OF_SERVICE_NAME);
 
     discovery_option->service_names[discovery_option->num_of_service_names] =
-        ogs_strdup(service_name);
+        service_name;
     ogs_assert(discovery_option->service_names
                 [discovery_option->num_of_service_names]);
     discovery_option->num_of_service_names++;
@@ -3660,11 +3748,20 @@ char *ogs_sbi_discovery_option_build_service_names(
         ogs_sbi_discovery_option_t *discovery_option)
 {
     int i;
+    char *name = NULL;
     char *service_names = NULL;
 
     ogs_assert(discovery_option);
 
-    service_names = ogs_strdup(discovery_option->service_names[0]);
+    name = OpenAPI_service_name_ToString(
+                discovery_option->service_names[0]);
+    if (!name) {
+        ogs_error("Invalid service_names[%d]",
+                discovery_option->service_names[0]);
+        return NULL;
+    }
+
+    service_names = ogs_strdup(name);
     if (!service_names) {
         ogs_error("ogs_strdup() failed");
         return NULL;;
@@ -3687,9 +3784,15 @@ char *ogs_sbi_discovery_option_build_service_names(
      * See also https://swagger.io/docs/specification/serialization/
      */
     if (discovery_option->num_of_service_names > 1) {
-        for (i = 1; i < discovery_option->num_of_service_names; i++)
-            service_names = ogs_mstrcatf(
-                    service_names, ",%s", discovery_option->service_names[i]);
+        for (i = 1; i < discovery_option->num_of_service_names; i++) {
+            name = OpenAPI_service_name_ToString(
+                        discovery_option->service_names[i]);
+            if (name)
+                service_names = ogs_mstrcatf(service_names, ",%s", name);
+            else
+                ogs_error("Invalid service_names[%d]",
+                        discovery_option->service_names[i]);
+        }
     }
 
     return service_names;
@@ -3731,15 +3834,23 @@ int ogs_sbi_discovery_option_parse_service_names(
      */
     token = ogs_strtok_r(v, ",", &saveptr);
     while (token != NULL) {
+        OpenAPI_service_name_e name = OpenAPI_service_name_NULL;
+
         if (discovery_option->num_of_service_names >=
-                OGS_SBI_MAX_NUM_OF_SERVICE_TYPE) {
+                OGS_SBI_MAX_NUM_OF_SERVICE_NAME) {
             ogs_error("Too many service-names [%d:%d]",
                     discovery_option->num_of_service_names + 1,
-                    OGS_SBI_MAX_NUM_OF_SERVICE_TYPE);
+                    OGS_SBI_MAX_NUM_OF_SERVICE_NAME);
             ogs_free(v);
             return OGS_ERROR;
         }
-        ogs_sbi_discovery_option_add_service_names(discovery_option, token);
+
+        name = OpenAPI_service_name_FromString(token);
+        if (name)
+            ogs_sbi_discovery_option_add_service_names(discovery_option, name);
+        else
+            ogs_error("Invalid token[%s]", token);
+
         token = ogs_strtok_r(NULL, ",", &saveptr);
     }
 

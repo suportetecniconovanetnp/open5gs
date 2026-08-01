@@ -1083,7 +1083,15 @@ static int smf_ue_set_supi(smf_ue_t *smf_ue, const char *supi)
     smf_ue_t *indexed_smf_ue = NULL;
 
     ogs_assert(smf_ue);
-    ogs_assert(supi);
+
+    if (!supi) {
+        ogs_error("No SUPI");
+        return OGS_ERROR;
+    }
+    if (strlen(supi) == 0) {
+        ogs_error("Empty SUPI");
+        return OGS_ERROR;
+    }
 
     if (smf_ue->supi) {
         if (strcmp(smf_ue->supi, supi) != 0) {
@@ -1198,7 +1206,14 @@ smf_ue_t *smf_ue_add_by_supi(char *supi)
     bool created = false;
     bool imsi_supi = false;
 
-    ogs_assert(supi);
+    if (!supi) {
+        ogs_error("No SUPI");
+        return NULL;
+    }
+    if (strlen(supi) == 0) {
+        ogs_error("Empty SUPI");
+        return NULL;
+    }
 
     memset(imsi_bcd, 0, sizeof(imsi_bcd));
     memset(imsi, 0, sizeof(imsi));
@@ -1345,8 +1360,20 @@ void smf_ue_remove_all(void)
 
 smf_ue_t *smf_ue_find_by_supi(char *supi)
 {
-    ogs_assert(supi);
-    return (smf_ue_t *)ogs_hash_get(self.supi_hash, supi, strlen(supi));
+    size_t supi_len;
+
+    if (!supi) {
+        ogs_error("No SUPI");
+        return NULL;
+    }
+
+    supi_len = strlen(supi);
+    if (supi_len == 0) {
+        ogs_error("Empty SUPI");
+        return NULL;
+    }
+
+    return (smf_ue_t *)ogs_hash_get(self.supi_hash, supi, supi_len);
 }
 
 smf_ue_t *smf_ue_find_by_imsi(uint8_t *imsi, int imsi_len)
@@ -1752,6 +1779,10 @@ smf_sess_t *smf_sess_add_by_sm_context(ogs_sbi_message_t *message)
         ogs_error("No SUPI");
         return NULL;
     }
+    if (strlen(SmContextCreateData->supi) == 0) {
+        ogs_error("Empty SUPI");
+        return NULL;
+    }
 
     if (SmContextCreateData->is_pdu_session_id == false) {
         ogs_error("No PDU session identitiy");
@@ -1804,6 +1835,10 @@ smf_sess_t *smf_sess_add_by_pdu_session(ogs_sbi_message_t *message)
 
     if (!PduSessionCreateData->supi) {
         ogs_error("No SUPI");
+        return NULL;
+    }
+    if (strlen(PduSessionCreateData->supi) == 0) {
+        ogs_error("Empty SUPI");
         return NULL;
     }
 
@@ -2111,6 +2146,8 @@ void smf_sess_remove(smf_sess_t *sess)
     /* H-SMF */
     if (sess->h_smf_uri)
         ogs_free(sess->h_smf_uri);
+    if (sess->h_smf_id)
+        ogs_free(sess->h_smf_id);
     if (sess->h_smf.client)
         ogs_sbi_client_remove(sess->h_smf.client);
     if (sess->vsmf_pdu_session_uri)
@@ -2595,44 +2632,25 @@ void smf_sess_create_indirect_data_forwarding(smf_sess_t *sess)
              * the same TEID.
              */
             if (ogs_list_first(&sess->bearer_list) == qos_flow) {
-                ogs_gtpu_resource_t *resource = NULL;
-
                 if (sess->handover.local_dl_addr)
                     ogs_freeaddrinfo(sess->handover.local_dl_addr);
                 if (sess->handover.local_dl_addr6)
                     ogs_freeaddrinfo(sess->handover.local_dl_addr6);
 
-                resource = ogs_pfcp_find_gtpu_resource(
-                        &sess->pfcp_node->gtpu_resource_list,
-                        sess->session.name, pdr->src_if);
-
-                if (resource) {
-                    ogs_user_plane_ip_resource_info_to_sockaddr(&resource->info,
+                ogs_assert(sess->pfcp_node->addr_list);
+                if (sess->pfcp_node->addr_list->ogs_sa_family == AF_INET)
+                    ogs_assert(OGS_OK == ogs_copyaddrinfo(
                         &sess->handover.local_dl_addr,
-                        &sess->handover.local_dl_addr6);
-                    if (resource->info.teidri)
-                        sess->handover.local_dl_teid =
-                            OGS_PFCP_GTPU_INDEX_TO_TEID(
-                                pdr->teid, resource->info.teidri,
-                                resource->info.teid_range);
-                    else
-                        sess->handover.local_dl_teid = pdr->teid;
-                } else {
-                    ogs_assert(sess->pfcp_node->addr_list);
-                    if (sess->pfcp_node->addr_list->ogs_sa_family == AF_INET)
-                        ogs_assert(OGS_OK == ogs_copyaddrinfo(
-                            &sess->handover.local_dl_addr,
-                            sess->pfcp_node->addr_list));
-                    else if (sess->pfcp_node->addr_list->ogs_sa_family ==
-                            AF_INET6)
-                        ogs_assert(OGS_OK == ogs_copyaddrinfo(
-                            &sess->handover.local_dl_addr6,
-                            sess->pfcp_node->addr_list));
-                    else
-                        ogs_assert_if_reached();
+                        sess->pfcp_node->addr_list));
+                else if (sess->pfcp_node->addr_list->ogs_sa_family ==
+                        AF_INET6)
+                    ogs_assert(OGS_OK == ogs_copyaddrinfo(
+                        &sess->handover.local_dl_addr6,
+                        sess->pfcp_node->addr_list));
+                else
+                    ogs_assert_if_reached();
 
-                    sess->handover.local_dl_teid = pdr->teid;
-                }
+                sess->handover.local_dl_teid = pdr->teid;
             }
 
             ogs_assert(OGS_OK ==
