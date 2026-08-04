@@ -70,6 +70,12 @@ static uint8_t gtp_cause_from_diameter(uint8_t gtp_version,
 static void send_gtp_create_err_msg(const smf_sess_t *sess,
         ogs_gtp_xact_t *gtp_xact, uint8_t gtp_cause)
 {
+    if (!gtp_xact) {
+        ogs_error("GTP transaction has already been removed, "
+                "no Create Session/PDP Context Response can be sent");
+        return;
+    }
+
     if (gtp_xact->gtp_version == 1)
         ogs_gtp1_send_error_message(gtp_xact, sess->sgw_s5c_teid,
             OGS_GTP1_CREATE_PDP_CONTEXT_RESPONSE_TYPE, gtp_cause);
@@ -81,6 +87,12 @@ static void send_gtp_create_err_msg(const smf_sess_t *sess,
 static void send_gtp_delete_err_msg(const smf_sess_t *sess,
         ogs_gtp_xact_t *gtp_xact, uint8_t gtp_cause)
 {
+    if (!gtp_xact) {
+        ogs_error("GTP transaction has already been removed, "
+                "no Delete Session/PDP Context Response can be sent");
+        return;
+    }
+
     if (gtp_xact->gtp_version == 1)
         ogs_gtp1_send_error_message(gtp_xact, sess->sgw_s5c_teid,
             OGS_GTP1_DELETE_PDP_CONTEXT_RESPONSE_TYPE, gtp_cause);
@@ -97,7 +109,7 @@ static bool send_ccr_init_req_gx_gy(smf_sess_t *sess, ogs_gtp_xact_t *gtp_xact)
         ogs_error("No Gy Diameter Peer");
         /* TODO: drop Gx connection here,
          * possibly move to another "releasing" state! */
-        uint8_t gtp_cause = (gtp_xact->gtp_version == 1) ?
+        uint8_t gtp_cause = (sess->gtp.version == 1) ?
                 OGS_GTP1_CAUSE_NO_RESOURCES_AVAILABLE :
                 OGS_GTP2_CAUSE_UE_NOT_AUTHORISED_BY_OCS_OR_EXTERNAL_AAA_SERVER;
         send_gtp_create_err_msg(sess, gtp_xact, gtp_cause);
@@ -120,6 +132,30 @@ static bool send_ccr_init_req_gx_gy(smf_sess_t *sess, ogs_gtp_xact_t *gtp_xact)
     return true;
 }
 
+/*
+ * Tear down the Gx/Gy sessions that were successfully established during
+ * the initial authorization, when the PDN connection setup cannot be
+ * completed anymore.
+ */
+static void send_ccr_abort_req_gx_gy(smf_sess_t *sess,
+        ogs_pool_id_t gtp_xact_id, bool need_gy_terminate)
+{
+    ogs_assert(sess);
+
+    if (sess->sm_data.gx_cca_init_err == ER_DIAMETER_SUCCESS) {
+        sess->sm_data.gx_ccr_term_in_flight = true;
+        smf_gx_send_ccr(sess, gtp_xact_id,
+                OGS_DIAM_GX_CC_REQUEST_TYPE_TERMINATION_REQUEST);
+    }
+    if (smf_use_gy_iface() == 1 &&
+        (sess->sm_data.gy_cca_init_err == ER_DIAMETER_SUCCESS ||
+         need_gy_terminate)) {
+        sess->sm_data.gy_ccr_term_in_flight = true;
+        smf_gy_send_ccr(sess, gtp_xact_id,
+                OGS_DIAM_GY_CC_REQUEST_TYPE_TERMINATION_REQUEST);
+    }
+}
+
 static bool send_ccr_termination_req_gx_gy_s6b(
         smf_sess_t *sess, ogs_gtp_xact_t *gtp_xact)
 {
@@ -131,7 +167,7 @@ static bool send_ccr_termination_req_gx_gy_s6b(
         ogs_error("No Gy Diameter Peer");
         /* TODO: drop Gx connection here,
          * possibly move to another "releasing" state! */
-        uint8_t gtp_cause = (gtp_xact->gtp_version == 1) ?
+        uint8_t gtp_cause = (sess->gtp.version == 1) ?
                 OGS_GTP1_CAUSE_NO_RESOURCES_AVAILABLE :
                 OGS_GTP2_CAUSE_UE_NOT_AUTHORISED_BY_OCS_OR_EXTERNAL_AAA_SERVER;
         send_gtp_delete_err_msg(sess, gtp_xact, gtp_cause);
@@ -451,6 +487,7 @@ void smf_gsm_state_initial(ogs_fsm_t *s, smf_event_t *e)
 void smf_gsm_state_wait_epc_auth_initial(ogs_fsm_t *s, smf_event_t *e)
 {
     smf_sess_t *sess = NULL;
+    smf_ue_t *smf_ue = NULL;
 
     ogs_diam_s6b_message_t *s6b_message = NULL;
     ogs_diam_gy_message_t *gy_message = NULL;
@@ -467,6 +504,7 @@ void smf_gsm_state_wait_epc_auth_initial(ogs_fsm_t *s, smf_event_t *e)
 
     sess = smf_sess_find_by_id(e->sess_id);
     ogs_assert(sess);
+    smf_ue = smf_ue_find_by_id(sess->smf_ue_id);
 
     switch (e->h.id) {
     case SMF_EVT_S6B_MESSAGE:
@@ -495,7 +533,6 @@ void smf_gsm_state_wait_epc_auth_initial(ogs_fsm_t *s, smf_event_t *e)
         case OGS_DIAM_GX_CMD_CODE_CREDIT_CONTROL:
             switch(gx_message->cc_request_type) {
             case OGS_DIAM_GX_CC_REQUEST_TYPE_INITIAL_REQUEST:
-                ogs_assert(gtp_xact);
                 diam_err = smf_gx_handle_cca_initial_request(sess,
                                 gx_message, gtp_xact);
                 sess->sm_data.gx_ccr_init_in_flight = false;
@@ -515,7 +552,6 @@ void smf_gsm_state_wait_epc_auth_initial(ogs_fsm_t *s, smf_event_t *e)
         case OGS_DIAM_GY_CMD_CODE_CREDIT_CONTROL:
             switch(gy_message->cc_request_type) {
             case OGS_DIAM_GY_CC_REQUEST_TYPE_INITIAL_REQUEST:
-                ogs_assert(gtp_xact);
                 diam_err = smf_gy_handle_cca_initial_request(sess,
                                 gy_message, gtp_xact, &need_gy_terminate);
                 sess->sm_data.gy_ccr_init_in_flight = false;
@@ -541,28 +577,36 @@ test_can_proceed:
         if (sess->sm_data.gy_cca_init_err != ER_DIAMETER_SUCCESS)
             diam_err = sess->sm_data.gy_cca_init_err;
 
+        /*
+         * The GTP-C transaction that triggered this PDN connection setup may
+         * have been removed while we were waiting for the Diameter answers
+         * (T3-HOLDING expiry because the PCRF/OCS was slower than the GTP-C
+         * transaction lifetime, peer restart, or a colliding Create Session
+         * Request that released the old context).
+         *
+         * In that case there is no peer left to answer, so give up the setup
+         * and release what has already been created, rather than aborting the
+         * whole SMF process and dropping every other session with it.
+         */
+        if (!gtp_xact) {
+            ogs_error("[%s:%d] GTP transaction has already been removed. "
+                    "Releasing the session",
+                    smf_ue ? smf_ue->imsi_bcd : "Unknown", sess->psi);
+            send_ccr_abort_req_gx_gy(
+                    sess, OGS_INVALID_POOL_ID, need_gy_terminate);
+            OGS_FSM_TRAN(s, smf_gsm_state_session_will_release);
+            return;
+        }
+
         if (diam_err == ER_DIAMETER_SUCCESS) {
             OGS_FSM_TRAN(s, smf_gsm_state_wait_pfcp_establishment);
-            ogs_assert(gtp_xact);
             ogs_assert(OGS_OK ==
                 smf_epc_pfcp_send_session_establishment_request(
-                    sess,
-                    gtp_xact ? gtp_xact->id : OGS_INVALID_POOL_ID, 0));
+                    sess, gtp_xact->id, 0));
         } else {
             /* Tear down Gx/Gy session if its sm_data.*init_err == ER_DIAMETER_SUCCESS */
-            if (sess->sm_data.gx_cca_init_err == ER_DIAMETER_SUCCESS) {
-                sess->sm_data.gx_ccr_term_in_flight = true;
-                smf_gx_send_ccr(
-                    sess, gtp_xact ? gtp_xact->id : OGS_INVALID_POOL_ID,
-                    OGS_DIAM_GX_CC_REQUEST_TYPE_TERMINATION_REQUEST);
-            }
-            if (smf_use_gy_iface() == 1 &&
-                (sess->sm_data.gy_cca_init_err == ER_DIAMETER_SUCCESS || need_gy_terminate)) {
-                sess->sm_data.gy_ccr_term_in_flight = true;
-                smf_gy_send_ccr(
-                    sess, gtp_xact ? gtp_xact->id : OGS_INVALID_POOL_ID,
-                    OGS_DIAM_GY_CC_REQUEST_TYPE_TERMINATION_REQUEST);
-            }
+            send_ccr_abort_req_gx_gy(sess, gtp_xact->id, need_gy_terminate);
+
             uint8_t gtp_cause = gtp_cause_from_diameter(
                                     gtp_xact->gtp_version, diam_err, NULL);
             send_gtp_create_err_msg(sess, gtp_xact, gtp_cause);
@@ -801,11 +845,28 @@ void smf_gsm_state_wait_pfcp_establishment(ogs_fsm_t *s, smf_event_t *e)
             if (pfcp_xact->epc) {
                 ogs_gtp_xact_t *gtp_xact =
                     ogs_gtp_xact_find_by_id(pfcp_xact->assoc_xact_id);
-                ogs_assert(gtp_xact);
 
                 pfcp_cause = smf_epc_n4_handle_session_establishment_response(
                         sess, pfcp_xact,
                         &pfcp_message->pfcp_session_establishment_response);
+
+                /*
+                 * The peer gave up on the Create Session/PDP Context Request
+                 * while the PFCP session was being established. Release the
+                 * session instead of aborting the whole process.
+                 * Note that the response above must still be handled first,
+                 * as it carries the UP F-SEID needed for the deletion.
+                 */
+                if (!gtp_xact) {
+                    ogs_error("GTP transaction has already been removed. "
+                            "Releasing the session");
+                    if (pfcp_cause == OGS_PFCP_CAUSE_REQUEST_ACCEPTED)
+                        OGS_FSM_TRAN(s, smf_gsm_state_wait_pfcp_deletion);
+                    else
+                        OGS_FSM_TRAN(s, smf_gsm_state_session_will_release);
+                    return;
+                }
+
                 if (pfcp_cause != OGS_PFCP_CAUSE_REQUEST_ACCEPTED) {
                     /* FIXME: tear down Gy and Gx */
                     gtp_cause = gtp_cause_from_pfcp(
