@@ -30,6 +30,7 @@ abts_suite *test_reset(abts_suite *suite);
 abts_suite *test_issues(abts_suite *suite);
 abts_suite *test_crash(abts_suite *suite);
 abts_suite *test_eir_disabled(abts_suite *suite);
+abts_suite *test_identity(abts_suite *suite);
 
 const struct testlist {
     abts_suite *(*func)(abts_suite *suite);
@@ -45,6 +46,7 @@ const struct testlist {
     {test_issues},
     {test_crash},
     {test_eir_disabled},
+    {test_identity},
     {NULL},
 };
 

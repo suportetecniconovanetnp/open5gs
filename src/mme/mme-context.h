@@ -431,6 +431,7 @@ typedef struct mme_ue_memento_s {
     uint32_t dl_count;
     /* Uplink counter (24-bit stored in uint32_t) */
     uint32_t ul_count;
+    bool ul_count_accepted;
     /* eNB key derived from kasme */
     uint8_t kenb[OGS_SHA256_DIGEST_SIZE];
     /* Hash used for NAS message integrity */
@@ -652,6 +653,15 @@ struct mme_ue_s {
         } __attribute__ ((packed));
         uint32_t i32;
     } ul_count;
+    /*
+     * Set once an uplink NAS message has been accepted in the current
+     * EPS NAS security context. While it is false, 'ul_count' does not yet
+     * hold a "last accepted" value and the replay check is not applied.
+     *
+     * Both are cleared by the MME when it takes a new security context
+     * into use, never by the security header type of a received message.
+     */
+    bool            ul_count_accepted;
     /* eNB key derived from kasme */
     uint8_t         kenb[OGS_SHA256_DIGEST_SIZE];
     /* Hash used for NAS message integrity */
@@ -1248,7 +1258,17 @@ mme_ue_t *mme_ue_find_by_s11_local_teid(uint32_t teid);
 mme_ue_t *mme_ue_find_by_gn_local_teid(uint32_t teid);
 
 mme_ue_t *mme_ue_find_by_message(const ogs_nas_eps_message_t *message);
-int mme_ue_set_imsi(mme_ue_t *mme_ue, char *imsi_bcd);
+
+/* Which procedure supplied the IMSI - logged at the OLD UE context
+ * migration, so we can tell which callers actually reach it. */
+typedef enum {
+    MME_UE_IMSI_FROM_ATTACH_REQUEST = 0,
+    MME_UE_IMSI_FROM_IDENTITY_RESPONSE,
+    MME_UE_IMSI_FROM_SGSN_CONTEXT_RESPONSE,
+} mme_ue_imsi_source_e;
+
+int mme_ue_set_imsi(mme_ue_t *mme_ue, char *imsi_bcd,
+        mme_ue_imsi_source_e source);
 
 bool mme_ue_have_indirect_tunnel(mme_ue_t *mme_ue);
 void mme_ue_clear_indirect_tunnel(mme_ue_t *mme_ue);

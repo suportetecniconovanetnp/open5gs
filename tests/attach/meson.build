@@ -28,6 +28,7 @@ testapp_attach_sources = files('''
     issues-test.c
     crash-test.c
     eir-disabled-test.c
+    identity-test.c
 '''.split())
 
 testapp_attach_exe = executable('attach',
