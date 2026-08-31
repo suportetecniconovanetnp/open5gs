@@ -1208,8 +1208,6 @@ void ngap_handle_initial_context_setup_response(
             (long long)ran_ue->ran_ue_ngap_id,
             (long long)ran_ue->amf_ue_ngap_id);
 
-    ran_ue->initial_context_setup_response_received = true;
-
     amf_ue = amf_ue_find_by_id(ran_ue->amf_ue_id);
     if (!amf_ue) {
         /*
@@ -1228,6 +1226,22 @@ void ngap_handle_initial_context_setup_response(
         ogs_assert(r != OGS_ERROR);
         return;
     }
+
+    if (!RAN_UE_IS_SERVING(amf_ue, ran_ue)) {
+        ogs_error("InitialContextSetupResponse on non-serving NG context "
+                "[AMF_UE_NGAP_ID:%lld] "
+                "[ran_ue:%d serving:%d rel_action:%d]",
+                (long long)ran_ue->amf_ue_ngap_id,
+                ran_ue->id, amf_ue->ran_ue_id, ran_ue->ue_ctx_rel_action);
+        r = ngap_send_error_indication2(ran_ue,
+                NGAP_Cause_PR_protocol,
+                NGAP_CauseProtocol_message_not_compatible_with_receiver_state);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+        return;
+    }
+
+    ran_ue->initial_context_setup_response_received = true;
 
     for (i = 0; PDUSessionList && i < OGS_ASN_LIST_COUNT(PDUSessionList); i++) {
         PDUSessionItem = (NGAP_PDUSessionResourceSetupItemCxtRes_t *)
@@ -2048,6 +2062,7 @@ void ngap_handle_ue_context_release_action(ran_ue_t *ran_ue)
     switch (ran_ue->ue_ctx_rel_action) {
     case NGAP_UE_CTX_REL_NG_CONTEXT_REMOVE:
         ogs_debug("    Action: NG context remove");
+        amf_sbi_send_deactivate_stale_user_plane(ran_ue);
         ran_ue_remove(ran_ue);
         break;
     case NGAP_UE_CTX_REL_NG_REMOVE_AND_UNLINK:
@@ -2232,6 +2247,20 @@ void ngap_handle_pdu_session_resource_setup_response(
                 NGAP_Cause_PR_radioNetwork,
                 NGAP_CauseRadioNetwork_unspecified,
                 NGAP_UE_CTX_REL_NG_CONTEXT_REMOVE, 0);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+        return;
+    }
+
+    if (!RAN_UE_IS_SERVING(amf_ue, ran_ue)) {
+        ogs_error("PDUSessionResourceSetupResponse on non-serving NG context "
+                "[AMF_UE_NGAP_ID:%lld] "
+                "[ran_ue:%d serving:%d rel_action:%d]",
+                (long long)ran_ue->amf_ue_ngap_id,
+                ran_ue->id, amf_ue->ran_ue_id, ran_ue->ue_ctx_rel_action);
+        r = ngap_send_error_indication2(ran_ue,
+                NGAP_Cause_PR_protocol,
+                NGAP_CauseProtocol_message_not_compatible_with_receiver_state);
         ogs_expect(r == OGS_OK);
         ogs_assert(r != OGS_ERROR);
         return;
@@ -5279,7 +5308,10 @@ void ngap_handle_ng_reset(
                             (long long)ran_ue->ran_ue_ngap_id);
             }
 
-            if (old_xact_count == new_xact_count) ran_ue_remove(ran_ue);
+            if (old_xact_count == new_xact_count) {
+                amf_sbi_send_deactivate_stale_user_plane(ran_ue);
+                ran_ue_remove(ran_ue);
+            }
         }
 
         ogs_list_for_each(&gnb->ran_ue_list, iter) {
@@ -5446,6 +5478,8 @@ void ngap_handle_error_indication(amf_gnb_t *gnb, ogs_ngap_message_t *message)
                             amf_self()->time.t3512.value + 240));
             }
         } else {
+            /* A held NG context: no AMF-UE is associated with it */
+            amf_sbi_send_deactivate_stale_user_plane(ran_ue);
             ran_ue_remove(ran_ue);
         }
     }
