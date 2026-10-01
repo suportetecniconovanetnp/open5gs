@@ -201,6 +201,16 @@ void sgwc_s5c_handle_create_session_response(
         ogs_gtp_send_error_message(
                 s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                 OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE, cause_value);
+        /*
+         * The PGW rejected (or sent a malformed) Create Session Response,
+         * but the Sxa session with the SGW-U was already established
+         * before this Create Session Request was relayed to the PGW
+         * (see sgwc_sxa_handle_session_establishment_response()). Without
+         * this, that Sxa session is never deleted and leaks forever.
+         */
+        ogs_assert(OGS_OK ==
+            sgwc_pfcp_send_session_deletion_request(
+                sess, OGS_INVALID_POOL_ID, NULL));
         return;
     }
 
@@ -226,6 +236,9 @@ void sgwc_s5c_handle_create_session_response(
             ogs_gtp_send_error_message(
                     s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                     OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE, bearer_cause);
+            ogs_assert(OGS_OK ==
+                sgwc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID, NULL));
             return;
         }
     }
@@ -240,6 +253,9 @@ void sgwc_s5c_handle_create_session_response(
         ogs_gtp_send_error_message(
                 s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                 OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE, session_cause);
+        ogs_assert(OGS_OK ==
+            sgwc_pfcp_send_session_deletion_request(
+                sess, OGS_INVALID_POOL_ID, NULL));
         return;
     }
 
@@ -264,6 +280,9 @@ void sgwc_s5c_handle_create_session_response(
                     s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                     OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE,
                     OGS_GTP2_CAUSE_MANDATORY_IE_MISSING);
+            ogs_assert(OGS_OK ==
+                sgwc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID, NULL));
             return;
         }
         if (rsp->bearer_contexts_created[i].s5_s8_u_sgw_f_teid.presence == 0) {
@@ -272,6 +291,9 @@ void sgwc_s5c_handle_create_session_response(
                     s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                     OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE,
                     OGS_GTP2_CAUSE_MANDATORY_IE_MISSING);
+            ogs_assert(OGS_OK ==
+                sgwc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID, NULL));
             return;
         }
 
@@ -285,6 +307,9 @@ void sgwc_s5c_handle_create_session_response(
                     s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                     OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE,
                     OGS_GTP2_CAUSE_CONTEXT_NOT_FOUND);
+            ogs_assert(OGS_OK ==
+                sgwc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID, NULL));
             return;
         }
 
@@ -306,6 +331,9 @@ void sgwc_s5c_handle_create_session_response(
                     s11_xact, sgwc_ue ? sgwc_ue->mme_s11_teid : 0,
                     OGS_GTP2_CREATE_SESSION_RESPONSE_TYPE,
                     OGS_GTP2_CAUSE_MANDATORY_IE_MISSING);
+            ogs_assert(OGS_OK ==
+                sgwc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID, NULL));
             return;
         }
 
