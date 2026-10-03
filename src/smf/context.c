@@ -1610,7 +1610,17 @@ smf_sess_t *smf_sess_add_by_gtp1_message(ogs_gtp1_message_t *message)
     if (sess) {
         ogs_warn("OLD Session Will Release [IMSI:%s,APN:%s]",
                 smf_ue->imsi_bcd, sess->session.name);
-        smf_sess_remove(sess);
+        /*
+         * If the old session already has an N4 session established with
+         * the UPF, tear it down first. Otherwise it leaks forever, since
+         * smf_sess_remove() below only frees local SMF state.
+         */
+        if (sess->pfcp_node)
+            ogs_assert(OGS_OK ==
+                smf_epc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID));
+        else
+            smf_sess_remove(sess);
     }
 
     sess = smf_sess_add_by_apn(smf_ue, apn, req->rat_type.u8);
@@ -1678,7 +1688,17 @@ smf_sess_t *smf_sess_add_by_gtp2_message(ogs_gtp2_message_t *message)
     if (sess) {
         ogs_info("OLD Session Will Release [IMSI:%s,APN:%s]",
                 smf_ue->imsi_bcd, sess->session.name);
-        smf_sess_remove(sess);
+        /*
+         * If the old session already has an N4 session established with
+         * the UPF, tear it down first. Otherwise it leaks forever, since
+         * smf_sess_remove() below only frees local SMF state.
+         */
+        if (sess->pfcp_node)
+            ogs_assert(OGS_OK ==
+                smf_epc_pfcp_send_session_deletion_request(
+                    sess, OGS_INVALID_POOL_ID));
+        else
+            smf_sess_remove(sess);
     }
 
     sess = smf_sess_add_by_apn(smf_ue, apn, req->rat_type.u8);
